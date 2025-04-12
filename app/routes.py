@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
-from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, Prescribe, PrescriptionMedicine
+from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
@@ -106,27 +106,35 @@ def get_prescription_details(prescription_id):
     if not prescription:
         return jsonify({'error': 'Prescription not found'}), 404
     
-    # 查询这个处方开给哪些成员
-    prescribe_records = Prescribe.query.filter_by(prescription_id=prescription_id).all()
+    # 查询这个处方开给哪些成员（加入异常处理）
     members = []
-    for record in prescribe_records:
-        member = Member.query.get(record.security_id)
-        if member:
-            members.append({
-                'security_id': member.security_id,
-                'name': member.name
-            })
+    try:
+        prescribe_records = Prescription.query.filter_by(prescription_id=prescription_id).all()
+        for record in prescribe_records:
+            member = Member.query.get(record.security_id)
+            if member:
+                members.append({
+                    'security_id': member.security_id,
+                    'name': member.name
+                })
+    except Exception as e:
+        print(f"查询处方用户时出错: {str(e)}")
+        # 如果表不存在或出错，至少返回一个空列表而不是崩溃
     
     # 查询这个处方包含哪些药品
-    prescription_medicines = PrescriptionMedicine.query.filter_by(prescription_id=prescription_id).all()
     medicines = []
-    for pm in prescription_medicines:
-        medicine = Medicine.query.get(pm.national_code)
-        if medicine:
-            medicines.append({
-                'national_code': medicine.national_code,
-                'name': medicine.name
-            })
+    try:
+        prescription_medicines = PrescriptionMedicine.query.filter_by(prescription_id=prescription_id).all()
+        for pm in prescription_medicines:
+            medicine = Medicine.query.get(pm.national_code)
+            if medicine:
+                medicines.append({
+                    'national_code': medicine.national_code,
+                    'name': medicine.name
+                })
+    except Exception as e:
+        print(f"查询处方药品时出错: {str(e)}")
+        # 如果表不存在或出错，至少返回一个空列表而不是崩溃
     
     prescription_data = {
         'prescription_id': prescription.prescription_id,

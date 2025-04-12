@@ -58,14 +58,10 @@ class MedicineAdministration(db.Model):
 class Prescription(db.Model):
     __tablename__ = 'prescription'
     prescription_id = db.Column(db.String(256), primary_key=True)
+    security_id=db.Column(db.String(256))
     time = db.Column(db.Date)
     doctor = db.Column(db.String(256))
-
-
-class Prescribe(db.Model):
-    __tablename__ = 'prescribe'
-    security_id = db.Column(db.String(256), db.ForeignKey('member.security_id'), primary_key=True)
-    prescription_id = db.Column(db.String(256), db.ForeignKey('prescription.prescription_id'), primary_key=True)
+    
 
 
 class PrescriptionMedicine(db.Model):
