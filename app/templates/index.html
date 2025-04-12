@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能药箱管理系统</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f7f7f7;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            display: flex;
+            flex-direction: row;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 250px;
+            padding: 20px;
+            background-color: #e8f0fe;
+            border-radius: 8px;
+            margin-right: 20px;
+        }
+        .content {
+            flex: 1;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .sidebar-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+        .menu-group {
+            margin-bottom: 20px;
+        }
+        .menu-title {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #666;
+        }
+        .menu-item {
+            display: block;
+            width: 100%;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background-color: #fff;
+            color: #333;  /* 添加明确的文字颜色 */
+            border: 1px solid #e1e1e1;  /* 添加边框增强可见性 */
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: left;
+            font-weight: 500;  /* 稍微加粗文字 */
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);  /* 添加轻微阴影 */
+        }
+        .menu-item:hover {
+            background-color: #d4e4fd;
+            border-color: #a8c7fa;
+        }
+        .menu-item.active {
+            background-color: #6c63ff;
+            color: white;
+            border-color: #5b54d6;
+            box-shadow: 0 2px 4px rgba(108, 99, 255, 0.2);
+        }
+        .content-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .content-table th, .content-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .content-table th {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1 class="sidebar-title">智能药箱管理系统</h1>
+            <div class="menu-group">
+                <h2 class="menu-title">查询功能</h2>
+                <button class="menu-item" id="query-members">家庭成员信息</button>
+                <button class="menu-item" id="query-medicines">药品信息</button>
+                <button class="menu-item" id="query-prescriptions">处方信息</button>
+                <button class="menu-item" id="query-current-medications">当前用药情况</button>
+            </div>
+        </div>
+        <div class="content" id="content-area">
+            <h2>欢迎使用智能药箱管理系统</h2>
+            <p>请点击左侧菜单选择要查看的内容。</p>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $('.menu-item').click(function() {
+                $('.menu-item').removeClass('active');
+                $(this).addClass('active');
+            });
+
+            $('#query-members').click(function() {
+                $.get('/api/members', function(data) {
+                    let content = '<div class="content-card"><h2>家庭成员信息</h2>';
+                    if (data.length === 0) {
+                        content += '<div class="empty-state"><p>暂无家庭成员信息</p></div>';
+                    } else {
+                        content += '<table class="content-table">';
+                        content += '<tr><th>姓名</th><th>ID</th><th>性别</th><th>年龄</th><th>操作</th></tr>';
+                        data.forEach(function(member) {
+                            content += `<tr>
+                                <td>${member.name}</td>
+                                <td>${member.security_id}</td>
+                                <td>${member.gender}</td>
+                                <td>${member.age}</td>
+                                <td><button onclick="viewMemberDetails('${member.security_id}')">查看详情</button></td>
+                            </tr>`;
+                        });
+                        content += '</table>';
+                    }
+                    content += '</div>';
+                    $('#content-area').html(content);
+                });
+            });
+
+            $('#query-medicines').click(function() {
+                $.get('/api/medicines', function(data) {
+                    let content = '<div class="content-card"><h2>药品信息</h2>';
+                    if (data.length === 0) {
+                        content += '<div class="empty-state"><p>暂无药品信息</p></div>';
+                    } else {
+                        content += '<table class="content-table">';
+                        content += '<tr><th>药品名称</th><th>编码</th><th>剩余数量</th><th>操作</th></tr>';
+                        data.forEach(function(medicine) {
+                            content += `<tr>
+                                <td>${medicine.name}</td>
+                                <td>${medicine.national_code}</td>
+                                <td>${medicine.remaining_quantity}</td>
+                                <td><button onclick="viewMedicineDetails('${medicine.national_code}')">查看详情</button></td>
+                            </tr>`;
+                        });
+                        content += '</table>';
+                    }
+                    content += '</div>';
+                    $('#content-area').html(content);
+                });
+            });
+
+            $('#query-prescriptions').click(function() {
+                $.get('/api/prescriptions', function(data) {
+                    let content = '<div class="content-card"><h2>处方信息</h2>';
+                    if (data.length === 0) {
+                        content += '<div class="empty-state"><p>暂无处方信息</p></div>';
+                    } else {
+                        content += '<table class="content-table">';
+                        content += '<tr><th>处方ID</th><th>开具时间</th><th>医生</th><th>操作</th></tr>';
+                        data.forEach(function(prescription) {
+                            content += `<tr>
+                                <td>${prescription.prescription_id}</td>
+                                <td>${prescription.time}</td>
+                                <td>${prescription.doctor}</td>
+                                <td><button onclick="viewPrescriptionDetails('${prescription.prescription_id}')">查看详情</button></td>
+                            </tr>`;
+                        });
+                        content += '</table>';
+                    }
+                    content += '</div>';
+                    $('#content-area').html(content);
+                });
+            });
+
+            $('#query-current-medications').click(function() {
+                // 添加加载状态提示
+                $('#content-area').html('<div class="content-card"><h2>用药情况</h2><p>加载中，请稍候...</p></div>');
+                
+                // 创建页面结构，包含切换按钮
+                let content = '<div class="content-card"><h2>用药情况</h2>';
+                content += '<div class="medication-toggle">';
+                content += '<button id="show-current" class="toggle-btn active">当前用药情况</button>';
+                content += '<button id="show-historical" class="toggle-btn">历史用药情况</button>';
+                content += '</div>';
+                
+                // 创建两个部分，初始只显示当前用药情况
+                content += '<div class="medication-sections">';
+                content += '<div id="current-medications-section" class="medication-section"><h3>当前用药情况</h3><div id="current-medications-content" class="content-card">加载中...</div></div>';
+                content += '<div id="historical-medications-section" class="medication-section" style="display: none;"><h3>历史用药情况</h3><div id="historical-medications-content" class="content-card">加载中...</div></div>';
+                content += '</div>';
+                content += '</div>';
+                
+                $('#content-area').html(content);
+                
+                // 添加切换按钮的事件处理
+                $('#show-current').click(function() {
+                    $('#show-current').addClass('active');
+                    $('#show-historical').removeClass('active');
+                    $('#current-medications-section').show();
+                    $('#historical-medications-section').hide();
+                });
+                
+                $('#show-historical').click(function() {
+                    $('#show-historical').addClass('active');
+                    $('#show-current').removeClass('active');
+                    $('#historical-medications-section').show();
+                    $('#current-medications-section').hide();
+                });
+                
+                // 加载当前用药情况
+                $.get('/api/current_medications', function(data) {
+                    let currentContent = '';
+                    
+                    // 如果没有任何用药记录，显示提示信息
+                    if (data.length === 0) {
+                        currentContent += '<div class="empty-state"><p>当前没有任何家庭成员的用药记录</p></div>';
+                    } else {
+                        // 遍历每个家庭成员的用药情况
+                        data.forEach(function(member) {
+                            currentContent += `<h4>${member.member_name}的用药情况</h4>`;
+                            if (member.medications.length === 0) {
+                                currentContent += '<div class="empty-state"><p>当前没有用药记录</p></div>';
+                            } else {
+                                currentContent += '<table class="content-table">';
+                                currentContent += '<tr><th>药品名称</th><th>剂量</th><th>开始时间</th><th>持续时间</th></tr>';
+                                member.medications.forEach(function(med) {
+                                    currentContent += `<tr>
+                                        <td>${med.medicine_name}</td>
+                                        <td>${med.dosage}</td>
+                                        <td>${med.start_time}</td>
+                                        <td>${med.lasting_time}</td>
+                                    </tr>`;
+                                });
+                                currentContent += '</table>';
+                            }
+                        });
+                    }
+                    
+                    $('#current-medications-content').html(currentContent);
+                }).fail(function(jqXHR, textStatus, errorThrown) {
+                    // 添加错误处理
+                    console.error("获取当前用药情况失败:", errorThrown);
+                    $('#current-medications-content').html('<div class="empty-state"><p>加载当前用药数据失败，请稍后重试。</p></div>');
+                });
+                
+                // 加载历史用药情况
+                $.get('/api/historical_medications', function(data) {
+                    let historyContent = '';
+                    
+                    // 如果没有任何历史用药记录，显示提示信息
+                    if (data.length === 0) {
+                        historyContent += '<div class="empty-state"><p>暂无历史用药记录</p></div>';
+                    } else {
+                        // 遍历每个家庭成员的历史用药情况
+                        data.forEach(function(member) {
+                            historyContent += `<h4>${member.member_name}的历史用药记录</h4>`;
+                            if (member.medications.length === 0) {
+                                historyContent += '<div class="empty-state"><p>无历史用药记录</p></div>';
+                            } else {
+                                historyContent += '<table class="content-table">';
+                                historyContent += '<tr><th>药品名称</th><th>剂量</th><th>开始时间</th><th>结束时间</th><th>持续时间</th></tr>';
+                                member.medications.forEach(function(med) {
+                                    historyContent += `<tr>
+                                        <td>${med.medicine_name}</td>
+                                        <td>${med.dosage}</td>
+                                        <td>${med.start_time}</td>
+                                        <td>${med.end_time}</td>
+                                        <td>${med.lasting_time}</td>
+                                    </tr>`;
+                                });
+                                historyContent += '</table>';
+                            }
+                        });
+                    }
+                    
+                    $('#historical-medications-content').html(historyContent);
+                }).fail(function(jqXHR, textStatus, errorThrown) {
+                    // 添加错误处理
+                    console.error("获取历史用药情况失败:", errorThrown);
+                    $('#historical-medications-content').html('<div class="empty-state"><p>加载历史用药数据失败，请稍后重试。</p></div>');
+                });
+            });
+        });
+
+        function viewMemberDetails(securityId) {
+            $.get(`/api/member_details/${securityId}`, function(data) {
+                let content = '<div class="content-card">';
+                content += `<h2>${data.name}的详细信息</h2>`;
+                content += '<div class="details-container">';
+                content += `
+                    <div class="detail-item"><div class="detail-label">身份证号</div><div class="detail-value">${data.security_id}</div></div>
+                    <div class="detail-item"><div class="detail-label">性别</div><div class="detail-value">${data.gender}</div></div>
+                    <div class="detail-item"><div class="detail-label">年龄</div><div class="detail-value">${data.age}</div></div>
+                    <div class="detail-item"><div class="detail-label">体重</div><div class="detail-value">${data.weight} kg</div></div>
+                    <div class="detail-item"><div class="detail-label">身高</div><div class="detail-value">${data.height} cm</div></div>
+                    <div class="detail-item"><div class="detail-label">基础疾病</div><div class="detail-value">${data.underlying_disease || '无'}</div></div>
+                    <div class="detail-item"><div class="detail-label">过敏原</div><div class="detail-value">${data.allergen || '无'}</div></div>
+                `;
+                content += '</div>';
+                content += '<div style="margin-top: 20px;"><button onclick="returnToMembers()">返回</button></div>';
+                content += '</div>';
+                $('#content-area').html(content);
+            });
+        }
+
+        function viewMedicineDetails(nationalCode) {
+            $.get(`/api/medicine_details/${nationalCode}`, function(data) {
+                let content = '<div class="content-card">';
+                content += `<h2>${data.name}的详细信息</h2>`;
+                content += '<div class="details-container">';
+                content += `
+                    <div class="detail-item"><div class="detail-label">药品编码</div><div class="detail-value">${data.national_code}</div></div>
+                    <div class="detail-item"><div class="detail-label">生产厂家</div><div class="detail-value">${data.manufacture_name}</div></div>
+                    <div class="detail-item"><div class="detail-label">生产日期</div><div class="detail-value">${data.manufacture_date}</div></div>
+                    <div class="detail-item"><div class="detail-label">剩余数量</div><div class="detail-value">${data.remaining_quantity}</div></div>
+                    <div class="detail-item"><div class="detail-label">过期日期</div><div class="detail-value">${data.expiry_date}</div></div>
+                    <div class="detail-item"><div class="detail-label">价格</div><div class="detail-value">¥${data.price}</div></div>
+                    <div class="detail-item"><div class="detail-label">存放位置</div><div class="detail-value">${data.cabinet_location}</div></div>
+                `;
+                content += '</div>';
+                content += '<div style="margin-top: 20px;"><button onclick="returnToMedicines()">返回</button></div>';
+                content += '</div>';
+                $('#content-area').html(content);
+            });
+        }
+
+        function viewPrescriptionDetails(prescriptionId) {
+            $.get(`/api/prescription_details/${prescriptionId}`, function(data) {
+                let content = '<div class="content-card">';
+                content += `<h2>处方详细信息</h2>`;
+                content += '<div class="details-container">';
+                content += `
+                    <div class="detail-item"><div class="detail-label">处方ID</div><div class="detail-value">${data.prescription_id}</div></div>
+                    <div class="detail-item"><div class="detail-label">开具时间</div><div class="detail-value">${data.time}</div></div>
+                    <div class="detail-item"><div class="detail-label">开具医生</div><div class="detail-value">${data.doctor}</div></div>
+                `;
+                content += '</div>';
+
+                content += '<h3>处方用户</h3>';
+                content += '<div class="content-card" style="margin-bottom: 20px;">';
+                content += '<table class="content-table">';
+                content += '<tr><th>用户ID</th><th>姓名</th></tr>';
+                data.members.forEach(function(member) {
+                    content += `<tr><td>${member.security_id}</td><td>${member.name}</td></tr>`;
+                });
+                content += '</table>';
+                content += '</div>';
+
+                content += '<h3>处方药品</h3>';
+                content += '<div class="content-card">';
+                content += '<table class="content-table">';
+                content += '<tr><th>药品编码</th><th>药品名称</th></tr>';
+                data.medicines.forEach(function(medicine) {
+                    content += `<tr><td>${medicine.national_code}</td><td>${medicine.name}</td></tr>`;
+                });
+                content += '</table>';
+                content += '</div>';
+                
+                content += '<div style="margin-top: 20px;"><button onclick="returnToPrescriptions()">返回</button></div>';
+                content += '</div>';
+                $('#content-area').html(content);
+            });
+        }
+        
+        // 添加返回函数
+        function returnToMembers() {
+            $('#query-members').click();
+        }
+        
+        function returnToMedicines() {
+            $('#query-medicines').click();
+        }
+        
+        function returnToPrescriptions() {
+            $('#query-prescriptions').click();
+        }
+    </script>
+</body>
+</html>
