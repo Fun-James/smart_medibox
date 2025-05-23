@@ -655,3 +655,70 @@ def api_refill_medicine():
             
     except Exception as e:
         return jsonify({'error': f'处理请求时发生错误：{str(e)}'}), 500
+
+# 获取即将过期的药品（30天内）
+@main.route('/api/expiring_medicines', methods=['GET'])
+def get_expiring_medicines():
+    try:
+        current_date = datetime.datetime.now().date()
+        expiry_threshold = current_date + datetime.timedelta(days=30)
+        
+        # 查询所有有过期日期且在30天内过期的药品
+        expiring_medicines = Medicine.query.filter(
+            Medicine.expiry_date.isnot(None),
+            Medicine.expiry_date <= expiry_threshold,
+            Medicine.expiry_date >= current_date,
+            Medicine.remaining_quantity > 0  # 只显示还有剩余的药品
+        ).all()
+        
+        result = []
+        for medicine in expiring_medicines:
+            days_until_expiry = (medicine.expiry_date - current_date).days
+            
+            cabinet = MedicineCabinet.query.get(medicine.cabinet_id) if medicine.cabinet_id else None
+            
+            result.append({
+                'national_code': medicine.national_code,
+                'name': medicine.name,
+                'expiry_date': medicine.expiry_date.strftime('%Y-%m-%d'),
+                'days_until_expiry': days_until_expiry,
+                'remaining_quantity': medicine.remaining_quantity,
+                'cabinet_location': cabinet.location if cabinet else '未知'
+            })
+        
+        # 按照过期时间排序，最接近过期的排在前面
+        result.sort(key=lambda x: x['days_until_expiry'])
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': f'获取即将过期药品失败：{str(e)}'}), 500
+
+# 获取库存不足的药品（少于3个）
+@main.route('/api/low_stock_medicines', methods=['GET'])
+def get_low_stock_medicines():
+    try:
+        # 查询所有库存少于3的药品
+        low_stock_medicines = Medicine.query.filter(
+            Medicine.remaining_quantity < 3,
+            Medicine.remaining_quantity > 0  # 只显示还有剩余的药品
+        ).all()
+        
+        result = []
+        for medicine in low_stock_medicines:
+            cabinet = MedicineCabinet.query.get(medicine.cabinet_id) if medicine.cabinet_id else None
+            
+            result.append({
+                'national_code': medicine.national_code,
+                'name': medicine.name,
+                'remaining_quantity': medicine.remaining_quantity,
+                'cabinet_location': cabinet.location if cabinet else '未知'
+            })
+        
+        # 按照剩余数量排序，最少的排在前面
+        result.sort(key=lambda x: x['remaining_quantity'])
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': f'获取库存不足药品失败：{str(e)}'}), 500
