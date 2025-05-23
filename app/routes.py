@@ -28,6 +28,13 @@ def get_members():
     members_data = [{'security_id': m.security_id, 'name': m.name, 'gender': m.gender, 'age': m.age} for m in members]
     return jsonify(members_data)
 
+# 获取药箱位置列表
+@main.route('/api/cabinets', methods=['GET'])
+def get_cabinets():
+    cabinets = MedicineCabinet.query.all()
+    cabinets_data = [{'cabinet_id': c.cabinet_id, 'location': c.location} for c in cabinets]
+    return jsonify(cabinets_data)
+
 # 获取成员服药记录
 @main.route('/api/member_medicine_records/<string:security_id>', methods=['GET'])
 def get_member_medicine_records(security_id):
@@ -275,11 +282,89 @@ def get_historical_medications():
 # 添加药品
 @main.route('/api/add_medicine', methods=['POST'])
 def api_add_medicine():
-    data = request.json
-    new_medicine = Medicine(national_code=data['national_code'], name=data['name'])
-    db.session.add(new_medicine)
-    db.session.commit()
-    return jsonify({'message': 'Medicine added successfully'})
+    try:
+        data = request.json
+        
+        # 检查药品编码是否已存在
+        existing_medicine = Medicine.query.get(data['national_code'])
+        if existing_medicine:
+            # 如果药品已存在，检查其他信息是否相同
+            if existing_medicine.name == data['name']:
+                # 药品名称相同，更新数量和其他信息
+                new_quantity = existing_medicine.remaining_quantity + (int(data.get('remaining_quantity', 0)) or 0)
+                
+                # 更新药品信息
+                if data.get('manufacture_name'):
+                    existing_medicine.manufacture_name = data.get('manufacture_name')
+                    
+                # 只有在提供了新日期的情况下才更新日期
+                if data.get('manufacture_date'):
+                    try:
+                        manufacture_date = datetime.datetime.strptime(data['manufacture_date'], '%Y-%m-%d').date()
+                        existing_medicine.manufacture_date = manufacture_date
+                    except ValueError:
+                        return jsonify({'error': '生产日期格式不正确！'}), 400
+                
+                if data.get('expiry_date'):
+                    try:
+                        expiry_date = datetime.datetime.strptime(data['expiry_date'], '%Y-%m-%d').date()
+                        existing_medicine.expiry_date = expiry_date
+                    except ValueError:
+                        return jsonify({'error': '过期日期格式不正确！'}), 400
+                
+                if data.get('price'):
+                    existing_medicine.price = float(data.get('price', 0.0))
+                
+                if data.get('cabinet_id'):
+                    existing_medicine.cabinet_id = int(data.get('cabinet_id'))
+                
+                # 更新数量
+                existing_medicine.remaining_quantity = new_quantity
+                
+                db.session.commit()
+                return jsonify({
+                    'message': f'药品"{existing_medicine.name}"数量已更新！当前数量：{new_quantity}',
+                    'updated': True
+                })
+            else:
+                # 药品编码相同但名称不同，返回错误
+                return jsonify({'error': f'药品编码已存在，但名称不同！已有药品名称：{existing_medicine.name}'}), 400
+        
+        # 处理日期字段
+        manufacture_date = None
+        expiry_date = None
+        
+        if data.get('manufacture_date'):
+            try:
+                manufacture_date = datetime.datetime.strptime(data['manufacture_date'], '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': '生产日期格式不正确！'}), 400
+        
+        if data.get('expiry_date'):
+            try:
+                expiry_date = datetime.datetime.strptime(data['expiry_date'], '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': '过期日期格式不正确！'}), 400
+        
+        # 创建新药品记录
+        new_medicine = Medicine(
+            national_code=data['national_code'],
+            name=data['name'],
+            manufacture_name=data.get('manufacture_name'),
+            manufacture_date=manufacture_date,
+            expiry_date=expiry_date,
+            remaining_quantity=data.get('remaining_quantity', 0),
+            price=data.get('price', 0.0),
+            cabinet_id=data.get('cabinet_id')
+        )
+        
+        db.session.add(new_medicine)
+        db.session.commit()
+        return jsonify({'message': '药品添加成功！'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'添加药品时发生错误：{str(e)}'}), 500
 
 # 删除药品
 @main.route('/api/delete_medicine/<string:national_code>', methods=['DELETE'])
@@ -320,3 +405,253 @@ def api_delete_member(security_id):
     db.session.delete(member)
     db.session.commit()
     return jsonify({'message': 'Member deleted successfully'})
+
+# 添加初始化数据库数据的接口
+@main.route('/api/init_data', methods=['POST'])
+def init_data():
+    try:
+        # 检查是否已有药箱数据
+        existing_cabinets = MedicineCabinet.query.count()
+        if existing_cabinets == 0:
+            # 添加默认药箱位置
+            default_cabinets = [
+                MedicineCabinet(cabinet_id=1, location='客厅药箱'),
+                MedicineCabinet(cabinet_id=2, location='卧室药箱'),
+                MedicineCabinet(cabinet_id=3, location='厨房药箱'),
+                MedicineCabinet(cabinet_id=4, location='卫生间药箱')
+            ]
+            
+            for cabinet in default_cabinets:
+                db.session.add(cabinet)
+        
+        db.session.commit()
+        return jsonify({'message': '数据初始化成功！'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'数据初始化失败：{str(e)}'}), 500
+
+# 删除药品（按数量删除，带事务处理）
+@main.route('/api/remove_medicine', methods=['POST'])
+def api_remove_medicine():
+    try:
+        data = request.json
+        national_code = data.get('national_code')
+        quantity_to_remove = data.get('quantity_to_remove', 0)
+        
+        if not national_code:
+            return jsonify({'error': '药品编码不能为空！'}), 400
+        
+        if quantity_to_remove <= 0:
+            return jsonify({'error': '删除数量必须大于0！'}), 400
+        
+        # 开始事务
+        db.session.begin()
+        
+        try:
+            # 查找药品记录（加锁防止并发修改）
+            medicine = Medicine.query.filter_by(national_code=national_code).with_for_update().first()
+            
+            if not medicine:
+                db.session.rollback()
+                return jsonify({'error': '找不到指定的药品！'}), 404
+            
+            # 检查当前数量
+            if medicine.remaining_quantity < quantity_to_remove:
+                db.session.rollback()
+                return jsonify({'error': f'删除数量({quantity_to_remove})超过当前剩余数量({medicine.remaining_quantity})！'}), 400
+            
+            # 计算删除后的数量
+            new_quantity = medicine.remaining_quantity - quantity_to_remove
+            
+            if new_quantity == 0:
+                # 数量为0时，需要检查是否有相关的用药记录
+                active_administrations = MedicineAdministration.query.filter_by(national_code=national_code).all()
+                
+                if active_administrations:
+                    # 检查是否有正在进行的用药
+                    current_date = datetime.datetime.now()
+                    has_active_medication = False
+                    
+                    for admin in active_administrations:
+                        if admin.lasting_time == '长期':
+                            has_active_medication = True
+                            break
+                        elif admin.start_time and admin.lasting_time:
+                            try:
+                                days_str = admin.lasting_time.replace('天', '')
+                                days = int(days_str)
+                                if admin.start_time + datetime.timedelta(days=days) >= current_date:
+                                    has_active_medication = True
+                                    break
+                            except (ValueError, AttributeError):
+                                continue
+                    
+                    if has_active_medication:
+                        db.session.rollback()
+                        return jsonify({'error': '该药品正在被使用中，无法完全删除！请先停止相关用药记录。'}), 400
+                
+                # 删除药品记录
+                db.session.delete(medicine)
+                message = f'药品"{medicine.name}"已完全删除！'
+            else:
+                # 更新数量
+                medicine.remaining_quantity = new_quantity
+                message = f'成功从"{medicine.name}"中删除 {quantity_to_remove} 个，剩余数量：{new_quantity}'
+            
+            # 记录操作日志（可选，这里简化处理）
+            print(f"药品删除操作：{national_code}, 删除数量：{quantity_to_remove}, 操作时间：{datetime.datetime.now()}")
+            
+            # 提交事务
+            db.session.commit()
+            
+            return jsonify({'message': message})
+            
+        except Exception as e:
+            # 发生错误时回滚事务
+            db.session.rollback()
+            raise e
+            
+    except Exception as e:
+        return jsonify({'error': f'删除操作失败：{str(e)}'}), 500
+
+# 获取药品的使用状态信息
+@main.route('/api/medicine_usage/<string:national_code>', methods=['GET'])
+def get_medicine_usage(national_code):
+    try:
+        medicine = Medicine.query.get(national_code)
+        if not medicine:
+            return jsonify({'error': 'Medicine not found'}), 404
+        
+        # 查询该药品的使用记录
+        administrations = MedicineAdministration.query.filter_by(national_code=national_code).all()
+        current_date = datetime.datetime.now()
+        
+        active_users = []
+        historical_count = 0
+        
+        for admin in administrations:
+            member = Member.query.get(admin.security_id)
+            if not member:
+                continue
+                
+            is_active = False
+            if admin.lasting_time == '长期':
+                is_active = True
+            elif admin.start_time and admin.lasting_time:
+                try:
+                    days_str = admin.lasting_time.replace('天', '')
+                    days = int(days_str)
+                    if admin.start_time + datetime.timedelta(days=days) >= current_date:
+                        is_active = True
+                except (ValueError, AttributeError):
+                    pass
+            
+            if is_active:
+                active_users.append({
+                    'name': member.name,
+                    'security_id': member.security_id,
+                    'dosage': admin.dosage,
+                    'start_time': admin.start_time.strftime('%Y-%m-%d') if admin.start_time else '未知'
+                })
+            else:
+                historical_count += 1
+        
+        usage_info = {
+            'medicine_name': medicine.name,
+            'remaining_quantity': medicine.remaining_quantity,
+            'active_users': active_users,
+            'historical_usage_count': historical_count,
+            'can_be_deleted': len(active_users) == 0
+        }
+        
+        return jsonify(usage_info)
+        
+    except Exception as e:
+        return jsonify({'error': f'获取药品使用信息失败：{str(e)}'}), 500
+
+# 专门用于添加新药品（不更新已有药品）
+@main.route('/api/add_new_medicine', methods=['POST'])
+def api_add_new_medicine():
+    try:
+        data = request.json
+        
+        # 检查药品是否已存在
+        existing_medicine = Medicine.query.get(data['national_code'])
+        if existing_medicine:
+            return jsonify({'error': f'药品编码已存在！请使用"补充药品"功能更新数量。'}), 400
+        
+        # 处理日期字段
+        manufacture_date = None
+        expiry_date = None
+        
+        if data.get('manufacture_date'):
+            try:
+                manufacture_date = datetime.datetime.strptime(data['manufacture_date'], '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': '生产日期格式不正确！'}), 400
+        
+        if data.get('expiry_date'):
+            try:
+                expiry_date = datetime.datetime.strptime(data['expiry_date'], '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': '过期日期格式不正确！'}), 400
+        
+        # 创建新药品记录
+        new_medicine = Medicine(
+            national_code=data['national_code'],
+            name=data['name'],
+            manufacture_name=data.get('manufacture_name'),
+            manufacture_date=manufacture_date,
+            expiry_date=expiry_date,
+            remaining_quantity=data.get('remaining_quantity', 0),
+            price=data.get('price', 0.0),
+            cabinet_id=data.get('cabinet_id')
+        )
+        
+        db.session.add(new_medicine)
+        db.session.commit()
+        return jsonify({'message': '新药品添加成功！'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'添加新药品时发生错误：{str(e)}'}), 500
+
+# 专门用于补充药品数量
+@main.route('/api/refill_medicine', methods=['POST'])
+def api_refill_medicine():
+    try:
+        data = request.json
+        national_code = data.get('national_code')
+        quantity_to_add = data.get('quantity_to_add', 0)
+        
+        if not national_code:
+            return jsonify({'error': '药品编码不能为空！'}), 400
+        
+        if quantity_to_add <= 0:
+            return jsonify({'error': '补充数量必须大于0！'}), 400
+        
+        # 开始事务
+        db.session.begin()
+        
+        try:
+            # 查找药品记录（加锁防止并发修改）
+            medicine = Medicine.query.filter_by(national_code=national_code).with_for_update().first()
+            
+            if not medicine:
+                db.session.rollback()
+                return jsonify({'error': '找不到指定的药品！'}), 404
+            
+            # 更新数量
+            new_quantity = medicine.remaining_quantity + quantity_to_add
+            medicine.remaining_quantity = new_quantity
+            
+            db.session.commit()
+            return jsonify({'message': f'成功为"{medicine.name}"补充 {quantity_to_add} 个，当前总数量：{new_quantity}'})
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': f'补充药品时发生错误：{str(e)}'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': f'处理请求时发生错误：{str(e)}'}), 500

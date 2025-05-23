@@ -86,6 +86,117 @@
         .content-table th {
             background-color: #f5f5f5;
         }
+        .form-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .form-group textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary {
+            background-color: #6c63ff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #5b54d6;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #c3e6cb;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #f5c6cb;
+        }
+        .medicine-search {
+            margin-bottom: 20px;
+        }
+        .medicine-item {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .medicine-info {
+            flex: 1;
+        }
+        .medicine-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .quantity-input {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .warning-message {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #ffeaa7;
+        }
     </style>
 </head>
 <body>
@@ -98,6 +209,11 @@
                 <button class="menu-item" id="query-medicines">药品信息</button>
                 <button class="menu-item" id="query-prescriptions">处方信息</button>
                 <button class="menu-item" id="query-current-medications">当前用药情况</button>
+            </div>            <div class="menu-group">
+                <h2 class="menu-title">药品管理</h2>
+                <button class="menu-item" id="add-new-medicine">添加新药</button>
+                <button class="menu-item" id="refill-medicine">补充药品</button>
+                <button class="menu-item" id="remove-medicine">删除药品</button>
             </div>
         </div>
         <div class="content" id="content-area">
@@ -108,6 +224,13 @@
 
     <script>
         $(document).ready(function() {
+            // 初始化数据
+            $.post('/api/init_data', function(response) {
+                console.log('数据初始化完成');
+            }).fail(function() {
+                console.warn('数据初始化失败');
+            });
+            
             $('.menu-item').click(function() {
                 $('.menu-item').removeClass('active');
                 $(this).addClass('active');
@@ -290,6 +413,118 @@
                     console.error("获取历史用药情况失败:", errorThrown);
                     $('#historical-medications-content').html('<div class="empty-state"><p>加载历史用药数据失败，请稍后重试。</p></div>');
                 });
+            });            $('#add-new-medicine').click(function() {
+                $('.menu-item').removeClass('active');
+                $(this).addClass('active');
+                
+                let content = '<div class="content-card"><h2>添加新药</h2>';
+                content += '<div class="form-container">';
+                content += '<form id="add-new-medicine-form">';
+                content += '<div class="form-group">';
+                content += '<label for="national_code">药品编码 *</label>';
+                content += '<input type="text" id="national_code" name="national_code" required>';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="name">药品名称 *</label>';
+                content += '<input type="text" id="name" name="name" required>';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="manufacture_name">生产厂家</label>';
+                content += '<input type="text" id="manufacture_name" name="manufacture_name">';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="manufacture_date">生产日期</label>';
+                content += '<input type="date" id="manufacture_date" name="manufacture_date">';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="expiry_date">过期日期</label>';
+                content += '<input type="date" id="expiry_date" name="expiry_date">';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="remaining_quantity">初始数量</label>';
+                content += '<input type="number" id="remaining_quantity" name="remaining_quantity" min="0">';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="price">价格 (元)</label>';
+                content += '<input type="number" id="price" name="price" step="0.01" min="0">';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<label for="cabinet_id">药箱位置</label>';
+                content += '<select id="cabinet_id" name="cabinet_id">';
+                content += '<option value="">请选择存放位置</option>';
+                content += '</select>';
+                content += '</div>';
+                content += '<div class="form-group">';
+                content += '<button type="submit" class="btn btn-primary">添加药品</button>';
+                content += '<button type="button" class="btn btn-secondary" onclick="resetNewMedicineForm()">重置</button>';
+                content += '</div>';
+                content += '</form>';
+                content += '</div>';
+                content += '</div>';
+                
+                $('#content-area').html(content);
+                
+                // 加载药箱位置选项
+                loadCabinetOptions();
+                
+                // 绑定表单提交事件
+                $('#add-new-medicine-form').submit(function(e) {
+                    e.preventDefault();
+                    submitNewMedicineForm();
+                });
+            });
+
+            $('#refill-medicine').click(function() {
+                $('.menu-item').removeClass('active');
+                $(this).addClass('active');
+                
+                let content = '<div class="content-card"><h2>补充药品</h2>';
+                content += '<div class="form-container">';
+                content += '<div class="medicine-search">';
+                content += '<input type="text" id="search-refill-medicine" placeholder="搜索药品名称或编码..." class="form-control">';
+                content += '</div>';
+                content += '<div id="refill-medicine-list">';
+                content += '<p>加载中...</p>';
+                content += '</div>';
+                content += '</div>';
+                content += '</div>';
+                
+                $('#content-area').html(content);
+                
+                // 加载药品列表用于补充
+                loadMedicinesForRefill();
+                
+                // 绑定搜索功能
+                $('#search-refill-medicine').on('input', function() {
+                    filterRefillMedicines($(this).val());
+                });
+            });            $('#remove-medicine').click(function() {
+                $('.menu-item').removeClass('active');
+                $(this).addClass('active');
+                
+                let content = '<div class="content-card"><h2>删除药品</h2>';
+                content += '<div class="warning-message">';
+                content += '<strong>注意：</strong>此操作将减少药品数量，当数量减至0时将完全删除该药品记录。请谨慎操作！';
+                content += '</div>';
+                content += '<div class="form-container">';
+                content += '<div class="medicine-search">';
+                content += '<input type="text" id="search-delete-medicine" placeholder="搜索药品名称或编码..." class="form-control">';
+                content += '</div>';
+                content += '<div id="delete-medicine-list">';
+                content += '<p>加载中...</p>';
+                content += '</div>';
+                content += '</div>';
+                content += '</div>';
+                
+                $('#content-area').html(content);
+                
+                // 加载药品列表用于删除
+                loadMedicinesForRemoval();
+                
+                // 绑定搜索功能
+                $('#search-delete-medicine').on('input', function() {
+                    filterDeleteMedicines($(this).val());
+                });
             });
         });
 
@@ -384,6 +619,317 @@
         
         function returnToPrescriptions() {
             $('#query-prescriptions').click();
+        }
+        
+        // 加载药箱位置选项
+        function loadCabinetOptions() {
+            $.get('/api/cabinets', function(data) {
+                let options = '<option value="">请选择存放位置</option>';
+                data.forEach(function(cabinet) {
+                    options += `<option value="${cabinet.cabinet_id}">${cabinet.location}</option>`;
+                });
+                $('#cabinet_id').html(options);
+            }).fail(function() {
+                console.warn("无法加载药箱位置信息");
+            });
+        }
+        
+        // 显示消息
+        function showMessage(message, type) {
+            $('.success-message, .error-message').remove();
+            const messageClass = type === 'success' ? 'success-message' : 'error-message';
+            const messageHtml = `<div class="${messageClass}">${message}</div>`;
+            $('.form-container').prepend(messageHtml);
+        }
+        
+        // 提交药品表单
+        function submitMedicineForm() {
+            const formData = {
+                national_code: $('#national_code').val(),
+                name: $('#name').val(),
+                manufacture_name: $('#manufacture_name').val() || null,
+                manufacture_date: $('#manufacture_date').val() || null,
+                expiry_date: $('#expiry_date').val() || null,
+                remaining_quantity: parseInt($('#remaining_quantity').val()) || 0,
+                price: parseFloat($('#price').val()) || 0.0,
+                cabinet_id: parseInt($('#cabinet_id').val()) || null
+            };
+            
+            // 验证必填字段
+            if (!formData.national_code || !formData.name) {
+                showMessage('请填写所有必填字段！', 'error');
+                return;
+            }
+              $.ajax({
+                url: '/api/add_medicine',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    if (response.updated) {
+                        showMessage(response.message, 'success');
+                    } else {
+                        showMessage('药品添加成功！', 'success');
+                    }
+                    resetForm();
+                },
+                error: function(xhr, status, error) {
+                    let errorMsg = '添加药品失败！';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    showMessage(errorMsg, 'error');
+                }
+            });
+        }
+        
+        // 提交新药品表单
+        function submitNewMedicineForm() {
+            const formData = {
+                national_code: $('#national_code').val(),
+                name: $('#name').val(),
+                manufacture_name: $('#manufacture_name').val() || null,
+                manufacture_date: $('#manufacture_date').val() || null,
+                expiry_date: $('#expiry_date').val() || null,
+                remaining_quantity: parseInt($('#remaining_quantity').val()) || 0,
+                price: parseFloat($('#price').val()) || 0.0,
+                cabinet_id: parseInt($('#cabinet_id').val()) || null,
+                is_new: true  // 标记为新药品
+            };
+            
+            // 验证必填字段
+            if (!formData.national_code || !formData.name) {
+                showMessage('请填写所有必填字段！', 'error');
+                return;
+            }
+            
+            $.ajax({
+                url: '/api/add_new_medicine',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    showMessage('新药品添加成功！', 'success');
+                    resetNewMedicineForm();
+                },
+                error: function(xhr, status, error) {
+                    let errorMsg = '添加新药品失败！';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    showMessage(errorMsg, 'error');
+                }
+            });
+        }
+        
+        // 重置新药品表单
+        function resetNewMedicineForm() {
+            $('#add-new-medicine-form')[0].reset();
+            $('.success-message, .error-message').remove();
+        }
+        
+        // 加载药品列表用于补充
+        function loadMedicinesForRefill() {
+            $.get('/api/medicines', function(data) {
+                displayMedicinesForRefill(data);
+                window.allRefillMedicines = data; // 保存所有药品数据用于搜索
+            }).fail(function() {
+                $('#refill-medicine-list').html('<p class="error-message">加载药品列表失败！</p>');
+            });
+        }
+        
+        // 显示药品列表用于补充
+        function displayMedicinesForRefill(medicines) {
+            if (medicines.length === 0) {
+                $('#refill-medicine-list').html('<p>暂无药品可补充</p>');
+                return;
+            }
+            
+            let html = '';
+            medicines.forEach(function(medicine) {
+                html += `
+                    <div class="medicine-item" data-code="${medicine.national_code}">
+                        <div class="medicine-info">
+                            <strong>${medicine.name}</strong><br>
+                            <small>编码: ${medicine.national_code} | 当前数量: ${medicine.remaining_quantity}</small>
+                        </div>
+                        <div class="medicine-actions">
+                            <label>补充数量:</label>
+                            <input type="number" class="quantity-input" min="1" value="1" id="refill-qty-${medicine.national_code}">
+                            <button class="btn btn-primary" onclick="refillMedicine('${medicine.national_code}', '${medicine.name}')">补充</button>
+                        </div>
+                    </div>
+                `;
+            });
+            $('#refill-medicine-list').html(html);
+        }
+        
+        // 过滤药品列表用于补充
+        function filterRefillMedicines(searchTerm) {
+            if (!window.allRefillMedicines) return;
+            
+            const filtered = window.allRefillMedicines.filter(medicine => 
+                medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                medicine.national_code.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            displayMedicinesForRefill(filtered);
+        }
+        
+        // 补充药品
+        function refillMedicine(nationalCode, medicineName) {
+            const quantityToAdd = parseInt($(`#refill-qty-${nationalCode}`).val());
+            
+            if (!quantityToAdd || quantityToAdd <= 0) {
+                alert('请输入有效的补充数量！');
+                return;
+            }
+            
+            const formData = {
+                national_code: nationalCode,
+                quantity_to_add: quantityToAdd
+            };
+            
+            $.ajax({
+                url: '/api/refill_medicine',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    showMessage(response.message, 'success');
+                    // 重新加载药品列表
+                    loadMedicinesForRefill();
+                },
+                error: function(xhr, status, error) {
+                    let errorMsg = '补充药品失败！';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    showMessage(errorMsg, 'error');
+                }
+            });
+        }
+        
+        // 用于删除药品的搜索过滤
+        function filterDeleteMedicines(searchTerm) {
+            if (!window.allMedicines) return;
+            
+            const filtered = window.allMedicines.filter(medicine => 
+                medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                medicine.national_code.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            displayMedicinesForRemoval(filtered);
+        }
+        
+        // 加载药品列表用于删除
+        function loadMedicinesForRemoval() {
+            $.get('/api/medicines', function(data) {
+                displayMedicinesForRemoval(data);
+                window.allMedicines = data; // 保存所有药品数据用于搜索
+            }).fail(function() {
+                $('#delete-medicine-list').html('<p class="error-message">加载药品列表失败！</p>');
+            });
+        }
+        
+        // 显示药品列表用于删除
+        function displayMedicinesForRemoval(medicines) {
+            if (medicines.length === 0) {
+                $('#delete-medicine-list').html('<p>暂无药品可删除</p>');
+                return;
+            }
+            
+            let html = '';
+            medicines.forEach(function(medicine) {
+                html += `
+                    <div class="medicine-item" data-code="${medicine.national_code}">
+                        <div class="medicine-info">
+                            <strong>${medicine.name}</strong><br>
+                            <small>编码: ${medicine.national_code} | 剩余数量: ${medicine.remaining_quantity}</small>
+                        </div>
+                        <div class="medicine-actions">
+                            <label>删除数量:</label>
+                            <input type="number" class="quantity-input" min="1" max="${medicine.remaining_quantity}" value="1" id="qty-${medicine.national_code}">
+                            <button class="btn btn-danger" onclick="removeMedicine('${medicine.national_code}', '${medicine.name}', ${medicine.remaining_quantity})">删除</button>
+                        </div>
+                    </div>
+                `;
+            });
+            $('#delete-medicine-list').html(html);
+        }
+        
+        // 重置表单
+        function resetForm() {
+            $('#add-medicine-form')[0].reset();
+            $('.success-message, .error-message').remove();
+        }
+        
+        // 删除药品
+        function removeMedicine(nationalCode, medicineName, currentQuantity) {
+            const quantityToRemove = parseInt($(`#qty-${nationalCode}`).val());
+            
+            if (!quantityToRemove || quantityToRemove <= 0) {
+                alert('请输入有效的删除数量！');
+                return;
+            }
+            
+            if (quantityToRemove > currentQuantity) {
+                alert('删除数量不能超过当前剩余数量！');
+                return;
+            }
+            
+            const willBeDeleted = quantityToRemove >= currentQuantity;
+            
+            if (willBeDeleted) {
+                // 如果要完全删除，先检查使用状态
+                $.get(`/api/medicine_usage/${nationalCode}`, function(usageData) {
+                    if (!usageData.can_be_deleted) {
+                        let activeUsersList = usageData.active_users.map(user => `${user.name} (${user.dosage})`).join(', ');
+                        alert(`无法完全删除该药品！\n正在使用该药品的用户：${activeUsersList}\n请先停止相关用药记录。`);
+                        return;
+                    }
+                    
+                    let confirmMessage = `确定要完全删除药品"${medicineName}"吗？\n`;
+                    if (usageData.historical_usage_count > 0) {
+                        confirmMessage += `注意：该药品有 ${usageData.historical_usage_count} 条历史用药记录，删除后这些记录仍会保留。\n`;
+                    }
+                    confirmMessage += '此操作不可恢复！';
+                    
+                    if (confirm(confirmMessage)) {
+                        performRemoveOperation(nationalCode, quantityToRemove);
+                    }
+                }).fail(function() {
+                    alert('检查药品使用状态失败，请稍后重试！');
+                });
+            } else {
+                const confirmMessage = `确定要从"${medicineName}"中删除 ${quantityToRemove} 个吗？`;
+                if (confirm(confirmMessage)) {
+                    performRemoveOperation(nationalCode, quantityToRemove);
+                }
+            }
+        }
+        
+        // 执行删除操作
+        function performRemoveOperation(nationalCode, quantityToRemove) {
+            $.ajax({
+                url: '/api/remove_medicine',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    national_code: nationalCode,
+                    quantity_to_remove: quantityToRemove
+                }),
+                success: function(response) {
+                    showMessage(response.message, 'success');
+                    // 重新加载药品列表
+                    loadMedicinesForRemoval();
+                },
+                error: function(xhr, status, error) {
+                    let errorMsg = '删除药品失败！';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    showMessage(errorMsg, 'error');
+                }
+            });
         }
     </script>
 </body>
