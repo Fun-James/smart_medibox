@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
-from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine
+from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
@@ -581,6 +581,20 @@ def api_add_new_medicine():
         if existing_medicine:
             return jsonify({'error': f'药品编码已存在！请使用"补充药品"功能更新数量。'}), 400
         
+        # 处理生产商信息
+        manufacture_name = data.get('manufacture_name')
+        if manufacture_name:
+            # 检查生产商是否存在
+            existing_manufacture = Manufacture.query.get(manufacture_name)
+            if not existing_manufacture:
+                # 如果生产商不存在，则创建新的生产商记录
+                new_manufacture = Manufacture(
+                    manufacture_name=manufacture_name,
+                    address=data.get('manufacture_address', '')  # 获取地址信息，如果没有则为空字符串
+                )
+                db.session.add(new_manufacture)
+                # 暂时不提交，和药品一起提交，保证事务的原子性
+        
         # 处理日期字段
         manufacture_date = None
         expiry_date = None
@@ -601,7 +615,7 @@ def api_add_new_medicine():
         new_medicine = Medicine(
             national_code=data['national_code'],
             name=data['name'],
-            manufacture_name=data.get('manufacture_name'),
+            manufacture_name=manufacture_name,
             manufacture_date=manufacture_date,
             expiry_date=expiry_date,
             remaining_quantity=data.get('remaining_quantity', 0),
@@ -611,7 +625,12 @@ def api_add_new_medicine():
         
         db.session.add(new_medicine)
         db.session.commit()
-        return jsonify({'message': '新药品添加成功！'})
+        
+        # 根据是否创建了新的生产商，返回不同的成功消息
+        if manufacture_name and not existing_manufacture:
+            return jsonify({'message': '新药品和生产商添加成功！'})
+        else:
+            return jsonify({'message': '新药品添加成功！'})
         
     except Exception as e:
         db.session.rollback()
@@ -722,3 +741,13 @@ def get_low_stock_medicines():
         
     except Exception as e:
         return jsonify({'error': f'获取库存不足药品失败：{str(e)}'}), 500
+
+# 获取所有生产商信息
+@main.route('/api/manufactures', methods=['GET'])
+def get_manufactures():
+    try:
+        manufactures = Manufacture.query.all()
+        manufactures_data = [{'manufacture_name': m.manufacture_name, 'address': m.address} for m in manufactures]
+        return jsonify(manufactures_data)
+    except Exception as e:
+        return jsonify({'error': f'获取生产商信息失败：{str(e)}'}), 500

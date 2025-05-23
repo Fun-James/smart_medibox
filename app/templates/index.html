@@ -541,7 +541,12 @@
                 content += '</div>';
                 content += '<div class="form-group">';
                 content += '<label for="manufacture_name">生产厂家</label>';
-                content += '<input type="text" id="manufacture_name" name="manufacture_name">';
+                content += '<input type="text" id="manufacture_name" name="manufacture_name" list="manufacture-list">';
+                content += '<datalist id="manufacture-list"></datalist>';
+                content += '</div>';
+                content += '<div class="form-group manufacture-address-group" style="display:none;">';
+                content += '<label for="manufacture_address">生产厂家地址 <small>(新厂家需填写)</small></label>';
+                content += '<input type="text" id="manufacture_address" name="manufacture_address" placeholder="如果是新的生产厂家，请填写地址">';
                 content += '</div>';
                 content += '<div class="form-group">';
                 content += '<label for="manufacture_date">生产日期</label>';
@@ -553,11 +558,11 @@
                 content += '</div>';
                 content += '<div class="form-group">';
                 content += '<label for="remaining_quantity">初始数量</label>';
-                content += '<input type="number" id="remaining_quantity" name="remaining_quantity" min="0">';
+                content += '<input type="number" id="remaining_quantity" name="remaining_quantity" min="0" value="0">';
                 content += '</div>';
                 content += '<div class="form-group">';
                 content += '<label for="price">价格 (元)</label>';
-                content += '<input type="number" id="price" name="price" step="0.01" min="0">';
+                content += '<input type="number" id="price" name="price" step="0.01" min="0" value="0">';
                 content += '</div>';
                 content += '<div class="form-group">';
                 content += '<label for="cabinet_id">药箱位置</label>';
@@ -577,6 +582,14 @@
                 
                 // 加载药箱位置选项
                 loadCabinetOptions();
+                
+                // 加载生产商列表
+                loadManufactureOptions();
+                
+                // 当生产商名称输入变化时检查是否为新厂家
+                $('#manufacture_name').on('input', function() {
+                    checkManufactureName();
+                });
                 
                 // 绑定表单提交事件
                 $('#add-new-medicine-form').submit(function(e) {
@@ -745,6 +758,46 @@
             });
         }
         
+        // 加载生产商选项
+        function loadManufactureOptions() {
+            $.get('/api/manufactures', function(data) {
+                // 保存生产商数据到全局变量，用于后续检查
+                window.manufactures = data;
+                
+                // 清空现有选项
+                $('#manufacture-list').empty();
+                
+                // 添加选项到datalist
+                data.forEach(function(manufacture) {
+                    $('#manufacture-list').append(`<option value="${manufacture.manufacture_name}">${manufacture.manufacture_name}</option>`);
+                });
+            }).fail(function() {
+                console.warn("无法加载生产商信息");
+            });
+        }
+        
+        // 检查生产商名称是否存在
+        function checkManufactureName() {
+            const manufactureName = $('#manufacture_name').val().trim();
+            
+            if (!manufactureName) {
+                $('.manufacture-address-group').hide();
+                return;
+            }
+            
+            // 检查名称是否在已有生产商列表中
+            const isExisting = window.manufactures && window.manufactures.some(m => m.manufacture_name === manufactureName);
+            
+            if (isExisting) {
+                // 如果存在，隐藏地址字段
+                $('.manufacture-address-group').hide();
+                $('#manufacture_address').val(''); // 清空地址
+            } else {
+                // 如果不存在，显示地址字段
+                $('.manufacture-address-group').show();
+            }
+        }
+        
         // 显示消息
         function showMessage(message, type) {
             $('.success-message, .error-message').remove();
@@ -796,10 +849,13 @@
         
         // 提交新药品表单
         function submitNewMedicineForm() {
+            const manufactureName = $('#manufacture_name').val().trim();
+            const isExistingManufacture = window.manufactures && window.manufactures.some(m => m.manufacture_name === manufactureName);
+            
             const formData = {
                 national_code: $('#national_code').val(),
                 name: $('#name').val(),
-                manufacture_name: $('#manufacture_name').val() || null,
+                manufacture_name: manufactureName || null,
                 manufacture_date: $('#manufacture_date').val() || null,
                 expiry_date: $('#expiry_date').val() || null,
                 remaining_quantity: parseInt($('#remaining_quantity').val()) || 0,
@@ -807,6 +863,17 @@
                 cabinet_id: parseInt($('#cabinet_id').val()) || null,
                 is_new: true  // 标记为新药品
             };
+            
+            // 如果是新的生产商，添加地址信息
+            if (manufactureName && !isExistingManufacture) {
+                formData.manufacture_address = $('#manufacture_address').val().trim();
+                
+                // 验证新生产商必须提供地址
+                if (!formData.manufacture_address) {
+                    showMessage('新的生产厂家必须提供地址信息', 'error');
+                    return;
+                }
+            }
             
             // 验证必填字段
             if (!formData.national_code || !formData.name) {
@@ -820,8 +887,12 @@
                 contentType: 'application/json',
                 data: JSON.stringify(formData),
                 success: function(response) {
-                    showMessage('新药品添加成功！', 'success');
+                    showMessage(response.message, 'success');
                     resetNewMedicineForm();
+                    // 如果添加了新的生产商，重新加载生产商列表
+                    if (manufactureName && !isExistingManufacture) {
+                        loadManufactureOptions();
+                    }
                 },
                 error: function(xhr, status, error) {
                     let errorMsg = '添加新药品失败！';
