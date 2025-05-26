@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
-from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture
+from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture, OTC
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
@@ -342,10 +342,19 @@ def api_add_medicine():
                                 medicine_manufacture_date = datetime.datetime.strptime(data['manufacture_date'], '%Y-%m-%d').date()
                             except ValueError:
                                 pass
+                          # 处理处方ID，如果为空则设为None
+                        prescription_id = data.get('prescription_id', '').strip()
+                        if not prescription_id:
+                            prescription_id = None
+                        else:
+                            # 验证处方ID是否存在
+                            existing_prescription = Prescription.query.get(prescription_id)
+                            if not existing_prescription:
+                                return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID或留空。'}), 400
                         
                         prescription_record = PrescriptionMedicine(
                             national_code=data['national_code'],
-                            prescription_id=data.get('prescription_id', ''),
+                            prescription_id=prescription_id,
                             manufacture_date=medicine_manufacture_date
                         )
                         db.session.add(prescription_record)
@@ -398,9 +407,19 @@ def api_add_medicine():
             db.session.add(otc_record)
         elif medicine_type == 'Prescription':
             from app.models import PrescriptionMedicine
+            # 处理处方ID，如果为空则设为None
+            prescription_id = data.get('prescription_id', '').strip()
+            if not prescription_id:
+                prescription_id = None
+            else:
+                # 验证处方ID是否存在
+                existing_prescription = Prescription.query.get(prescription_id)
+                if not existing_prescription:
+                    return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID或留空。'}), 400
+            
             prescription_record = PrescriptionMedicine(
                 national_code=data['national_code'],
-                prescription_id=data.get('prescription_id', ''),
+                prescription_id=prescription_id,
                 manufacture_date=manufacture_date
             )
             db.session.add(prescription_record)
@@ -415,13 +434,73 @@ def api_add_medicine():
 # 删除药品
 @main.route('/api/delete_medicine/<string:national_code>', methods=['DELETE'])
 def api_delete_medicine(national_code):
-    medicine = Medicine.query.get(national_code)
-    if not medicine:
-        return jsonify({'error': 'Medicine not found'}), 404
+    try:
+        medicine = Medicine.query.get(national_code)
+        if not medicine:
+            return jsonify({'error': '找不到指定的药品'}), 404
 
-    db.session.delete(medicine)
-    db.session.commit()
-    return jsonify({'message': 'Medicine deleted successfully'})
+        # 开始事务
+        db.session.begin()
+        
+        try:
+            # 检查是否有正在进行的用药记录
+            active_administrations = MedicineAdministration.query.filter_by(national_code=national_code).all()
+            
+            if active_administrations:
+                # 检查是否有正在进行的用药
+                current_date = datetime.datetime.now()
+                has_active_medication = False
+                active_users = []
+                
+                for admin in active_administrations:
+                    # 获取用户信息
+                    member = Member.query.get(admin.security_id)
+                    user_name = member.name if member else admin.security_id
+                    
+                    if admin.lasting_time == '长期':
+                        has_active_medication = True
+                        active_users.append(f"{user_name} (长期用药)")
+                    elif admin.start_time and admin.lasting_time:
+                        try:
+                            days_str = admin.lasting_time.replace('天', '')
+                            days = int(days_str)
+                            if admin.start_time + datetime.timedelta(days=days) >= current_date:
+                                has_active_medication = True
+                                active_users.append(f"{user_name} ({admin.lasting_time})")
+                        except (ValueError, AttributeError):
+                            continue
+                
+                if has_active_medication:
+                    db.session.rollback()
+                    return jsonify({
+                        'error': f'该药品正在被使用中，无法删除！\n正在使用的用户：{", ".join(active_users)}\n请先停止相关用药记录。'
+                    }), 400
+            
+            # 删除相关的子表记录
+            # 1. 删除 OTC 记录
+            OTC.query.filter_by(national_code=national_code).delete()
+            
+            # 2. 删除 PrescriptionMedicine 记录
+            PrescriptionMedicine.query.filter_by(national_code=national_code).delete()
+            
+            # 3. 删除 MedicineAdministration 记录（历史记录）
+            MedicineAdministration.query.filter_by(national_code=national_code).delete()
+            
+            # 4. 最后删除主表记录
+            db.session.delete(medicine)
+            
+            # 提交事务
+            db.session.commit()
+            
+            return jsonify({'message': f'药品"{medicine.name}"已成功删除！'})
+            
+        except Exception as e:
+            # 发生错误时回滚事务
+            db.session.rollback()
+            raise e
+            
+    except Exception as e:
+        return jsonify({'error': f'删除操作失败：{str(e)}'}), 500
 
 # 添加成员
 @main.route('/api/add_member', methods=['POST'])
@@ -506,8 +585,7 @@ def api_remove_medicine():
             if medicine.remaining_quantity < quantity_to_remove:
                 db.session.rollback()
                 return jsonify({'error': f'删除数量({quantity_to_remove})超过当前剩余数量({medicine.remaining_quantity})！'}), 400
-            
-            # 计算删除后的数量
+              # 计算删除后的数量
             new_quantity = medicine.remaining_quantity - quantity_to_remove
             
             if new_quantity == 0:
@@ -537,7 +615,17 @@ def api_remove_medicine():
                         db.session.rollback()
                         return jsonify({'error': '该药品正在被使用中，无法完全删除！请先停止相关用药记录。'}), 400
                 
-                # 删除药品记录
+                # 删除相关的子表记录，然后删除主表记录
+                # 1. 删除 OTC 记录
+                OTC.query.filter_by(national_code=national_code).delete()
+                
+                # 2. 删除 PrescriptionMedicine 记录
+                PrescriptionMedicine.query.filter_by(national_code=national_code).delete()
+                
+                # 3. 删除 MedicineAdministration 记录（历史记录）
+                MedicineAdministration.query.filter_by(national_code=national_code).delete()
+                
+                # 4. 最后删除主表记录
                 db.session.delete(medicine)
                 message = f'药品"{medicine.name}"已完全删除！'
             else:
@@ -622,6 +710,11 @@ def api_add_new_medicine():
     try:
         data = request.json
         
+        # 验证药品类型
+        medicine_type = data.get('medicine_type')
+        if not medicine_type or medicine_type not in ['OTC', 'Prescription']:
+            return jsonify({'error': '无效的药品类型！必须是 OTC 或 Prescription'}), 400
+        
         # 检查药品是否已存在
         existing_medicine = Medicine.query.get(data['national_code'])
         if existing_medicine:
@@ -670,6 +763,32 @@ def api_add_new_medicine():
         )
         
         db.session.add(new_medicine)
+          # 根据药品类型创建相应的记录
+        if medicine_type == 'OTC':
+            otc_record = OTC(
+                national_code=data['national_code'], 
+                direction=data.get('direction', ''),
+                manufacture_date=manufacture_date
+            )
+            db.session.add(otc_record)
+        elif medicine_type == 'Prescription':
+            # 处理处方ID，如果为空则设为None
+            prescription_id = data.get('prescription_id', '').strip()
+            if not prescription_id:
+                prescription_id = None
+            else:
+                # 验证处方ID是否存在
+                existing_prescription = Prescription.query.get(prescription_id)
+                if not existing_prescription:
+                    return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID或留空。'}), 400
+            
+            prescription_record = PrescriptionMedicine(
+                national_code=data['national_code'],
+                prescription_id=prescription_id,
+                manufacture_date=manufacture_date
+            )
+            db.session.add(prescription_record)
+        
         db.session.commit()
         
         # 根据是否创建了新的生产商，返回不同的成功消息

@@ -43,7 +43,7 @@ class Medicine(db.Model):
         # 检查是否在PrescriptionMedicine表中
         prescription_record = PrescriptionMedicine.query.filter_by(national_code=self.national_code).first()
         if prescription_record:
-            return 'Prescription'
+            return '处方药'
         
         # 如果都不在，返回未知
         return 'Unknown'
