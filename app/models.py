@@ -4,6 +4,7 @@ class OTC(db.Model):
     __tablename__ = 'OTC'
     national_code = db.Column(db.String(256), db.ForeignKey('medicine.national_code'), primary_key=True)
     direction = db.Column(db.String(1024))
+    manufacture_date = db.Column(db.Date)
 
 
 class Manufacture(db.Model):
@@ -31,6 +32,21 @@ class Medicine(db.Model):
     price = db.Column(db.Float)
 
     otc_info = db.relationship('OTC', uselist=False, backref='medicine')
+    
+    def get_medicine_type(self):
+        """获取药品类型：通过检查是否在OTC表或PrescriptionMedicine表中来判断"""
+        # 检查是否在OTC表中
+        otc_record = OTC.query.filter_by(national_code=self.national_code).first()
+        if otc_record:
+            return 'OTC'
+        
+        # 检查是否在PrescriptionMedicine表中
+        prescription_record = PrescriptionMedicine.query.filter_by(national_code=self.national_code).first()
+        if prescription_record:
+            return 'Prescription'
+        
+        # 如果都不在，返回未知
+        return 'Unknown'
 
 
 class Member(db.Model):
@@ -68,3 +84,4 @@ class PrescriptionMedicine(db.Model):
     __tablename__ = 'prescription_medicine'
     national_code = db.Column(db.String(256), db.ForeignKey('medicine.national_code'), primary_key=True)
     prescription_id = db.Column(db.String(256), db.ForeignKey('prescription.prescription_id'))
+    manufacture_date = db.Column(db.Date)  # 添加manufacture_date字段

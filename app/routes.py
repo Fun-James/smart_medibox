@@ -18,7 +18,7 @@ def index():
 @main.route('/api/medicines', methods=['GET'])
 def get_medicines():
     medicines = Medicine.query.all()
-    medicines_data = [{'national_code': m.national_code, 'name': m.name, 'remaining_quantity': m.remaining_quantity} for m in medicines]
+    medicines_data = [{'national_code': m.national_code, 'name': m.name, 'remaining_quantity': m.remaining_quantity, 'medicine_type': m.get_medicine_type()} for m in medicines]
     return jsonify(medicines_data)
 
 # 获取成员列表
@@ -87,7 +87,8 @@ def get_medicine_details(national_code):
         'expiry_date': medicine.expiry_date.strftime('%Y-%m-%d') if medicine.expiry_date else '未知',
         'price': medicine.price,
         'cabinet_id': medicine.cabinet_id,
-        'cabinet_location': cabinet.location if cabinet else '未知'
+        'cabinet_location': cabinet.location if cabinet else '未知',
+        'medicine_type': medicine.get_medicine_type()  # 使用方法获取药品类型
     }
     return jsonify(medicine_data)
 
@@ -284,6 +285,9 @@ def get_historical_medications():
 def api_add_medicine():
     try:
         data = request.json
+        medicine_type = data.get('medicine_type') # 获取药品类型
+        if not medicine_type or medicine_type not in ['OTC', 'Prescription']:
+            return jsonify({'error': '无效的药品类型！必须是 OTC 或 Prescription'}), 400
         
         # 检查药品编码是否已存在
         existing_medicine = Medicine.query.get(data['national_code'])
@@ -316,10 +320,35 @@ def api_add_medicine():
                     existing_medicine.price = float(data.get('price', 0.0))
                 
                 if data.get('cabinet_id'):
-                    existing_medicine.cabinet_id = int(data.get('cabinet_id'))
-                
+                    existing_medicine.cabinet_id = int(data.get('cabinet_id'))                
                 # 更新数量
                 existing_medicine.remaining_quantity = new_quantity
+                
+                # 确保药品类型记录存在
+                if medicine_type == 'OTC':
+                    from app.models import OTC
+                    otc_record = OTC.query.filter_by(national_code=data['national_code']).first()
+                    if not otc_record:
+                        otc_record = OTC(national_code=data['national_code'], direction=data.get('direction', ''))
+                        db.session.add(otc_record)
+                elif medicine_type == 'Prescription':
+                    from app.models import PrescriptionMedicine
+                    prescription_record = PrescriptionMedicine.query.filter_by(national_code=data['national_code']).first()
+                    if not prescription_record:
+                        # 使用药品的生产日期
+                        medicine_manufacture_date = existing_medicine.manufacture_date
+                        if data.get('manufacture_date'):
+                            try:
+                                medicine_manufacture_date = datetime.datetime.strptime(data['manufacture_date'], '%Y-%m-%d').date()
+                            except ValueError:
+                                pass
+                        
+                        prescription_record = PrescriptionMedicine(
+                            national_code=data['national_code'],
+                            prescription_id=data.get('prescription_id', ''),
+                            manufacture_date=medicine_manufacture_date
+                        )
+                        db.session.add(prescription_record)
                 
                 db.session.commit()
                 return jsonify({
@@ -343,8 +372,7 @@ def api_add_medicine():
         if data.get('expiry_date'):
             try:
                 expiry_date = datetime.datetime.strptime(data['expiry_date'], '%Y-%m-%d').date()
-            except ValueError:
-                return jsonify({'error': '过期日期格式不正确！'}), 400
+            except ValueError:            return jsonify({'error': '过期日期格式不正确！'}), 400
         
         # 创建新药品记录
         new_medicine = Medicine(
@@ -357,8 +385,26 @@ def api_add_medicine():
             price=data.get('price', 0.0),
             cabinet_id=data.get('cabinet_id')
         )
-        
         db.session.add(new_medicine)
+        
+        # 根据药品类型创建相应的记录
+        if medicine_type == 'OTC':
+            from app.models import OTC
+            otc_record = OTC(
+                national_code=data['national_code'], 
+                direction=data.get('direction', ''),
+                manufacture_date=manufacture_date  # 添加生产日期
+            )
+            db.session.add(otc_record)
+        elif medicine_type == 'Prescription':
+            from app.models import PrescriptionMedicine
+            prescription_record = PrescriptionMedicine(
+                national_code=data['national_code'],
+                prescription_id=data.get('prescription_id', ''),
+                manufacture_date=manufacture_date
+            )
+            db.session.add(prescription_record)
+        
         db.session.commit()
         return jsonify({'message': '药品添加成功！'})
         

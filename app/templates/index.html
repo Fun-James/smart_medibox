@@ -378,12 +378,13 @@
                         content += '<div class="empty-state"><p>暂无药品信息</p></div>';
                     } else {
                         content += '<table class="content-table">';
-                        content += '<tr><th>药品名称</th><th>编码</th><th>剩余数量</th><th>操作</th></tr>';
+                        content += '<tr><th>药品名称</th><th>编码</th><th>剩余数量</th><th>药品类型</th><th>操作</th></tr>'; // 添加药品类型表头
                         data.forEach(function(medicine) {
                             content += `<tr>
                                 <td>${medicine.name}</td>
                                 <td>${medicine.national_code}</td>
                                 <td>${medicine.remaining_quantity}</td>
+                                <td>${medicine.medicine_type}</td> <!-- 显示药品类型 -->
                                 <td><button onclick="viewMedicineDetails('${medicine.national_code}')">查看详情</button></td>
                             </tr>`;
                         });
@@ -525,76 +526,92 @@
                     $('#historical-medications-content').html('<div class="empty-state"><p>加载历史用药数据失败，请稍后重试。</p></div>');
                 });
             });            $('#add-new-medicine').click(function() {
-                $('.menu-item').removeClass('active');
-                $(this).addClass('active');
-                
-                let content = '<div class="content-card"><h2>添加新药</h2>';
-                content += '<div class="form-container">';
-                content += '<form id="add-new-medicine-form">';
-                content += '<div class="form-group">';
-                content += '<label for="national_code">药品编码 *</label>';
-                content += '<input type="text" id="national_code" name="national_code" required>';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="name">药品名称 *</label>';
-                content += '<input type="text" id="name" name="name" required>';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="manufacture_name">生产厂家</label>';
-                content += '<input type="text" id="manufacture_name" name="manufacture_name" list="manufacture-list">';
-                content += '<datalist id="manufacture-list"></datalist>';
-                content += '</div>';
-                content += '<div class="form-group manufacture-address-group" style="display:none;">';
-                content += '<label for="manufacture_address">生产厂家地址 <small>(新厂家需填写)</small></label>';
-                content += '<input type="text" id="manufacture_address" name="manufacture_address" placeholder="如果是新的生产厂家，请填写地址">';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="manufacture_date">生产日期</label>';
-                content += '<input type="date" id="manufacture_date" name="manufacture_date">';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="expiry_date">过期日期</label>';
-                content += '<input type="date" id="expiry_date" name="expiry_date">';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="remaining_quantity">初始数量</label>';
-                content += '<input type="number" id="remaining_quantity" name="remaining_quantity" min="0" value="0">';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="price">价格 (元)</label>';
-                content += '<input type="number" id="price" name="price" step="0.01" min="0" value="0">';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<label for="cabinet_id">药箱位置</label>';
-                content += '<select id="cabinet_id" name="cabinet_id">';
-                content += '<option value="">请选择存放位置</option>';
-                content += '</select>';
-                content += '</div>';
-                content += '<div class="form-group">';
-                content += '<button type="submit" class="btn btn-primary">添加药品</button>';
-                content += '<button type="button" class="btn btn-secondary" onclick="resetNewMedicineForm()">重置</button>';
-                content += '</div>';
-                content += '</form>';
-                content += '</div>';
-                content += '</div>';
-                
+                let content = `
+                    <div class="form-container">
+                        <h2>添加新药</h2>
+                        <div id="message-area"></div>
+                        <form id="add-medicine-form">
+                            <div class="form-group">
+                                <label for="national_code">药品编码:</label>
+                                <input type="text" id="national_code" name="national_code" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="name">药品名称:</label>
+                                <input type="text" id="name" name="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>药品类型:</label>
+                                <input type="radio" id="otc" name="medicine_type" value="OTC" required>
+                                <label for="otc">OTC</label>
+                                <input type="radio" id="prescription" name="medicine_type" value="Prescription" required>
+                                <label for="prescription">处方药</label>
+                            </div>
+                            <div class="form-group">
+                                <label for="manufacture_name">生产厂家:</label>
+                                <input type="text" id="manufacture_name" name="manufacture_name">
+                            </div>
+                            <div class="form-group">
+                                <label for="manufacture_date">生产日期:</label>
+                                <input type="date" id="manufacture_date" name="manufacture_date">
+                            </div>
+                            <div class="form-group">
+                                <label for="expiry_date">过期日期:</label>
+                                <input type="date" id="expiry_date" name="expiry_date">
+                            </div>
+                            <div class="form-group">
+                                <label for="remaining_quantity">剩余数量:</label>
+                                <input type="number" id="remaining_quantity" name="remaining_quantity" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="price">价格:</label>
+                                <input type="number" id="price" name="price" step="0.01" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="cabinet_id">存放药箱:</label>
+                                <select id="cabinet_id" name="cabinet_id"></select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">添加药品</button>
+                        </form>
+                    </div>
+                `;
                 $('#content-area').html(content);
-                
-                // 加载药箱位置选项
-                loadCabinetOptions();
-                
-                // 加载生产商列表
-                loadManufactureOptions();
-                
-                // 当生产商名称输入变化时检查是否为新厂家
-                $('#manufacture_name').on('input', function() {
-                    checkManufactureName();
+
+                // 获取药箱列表并填充下拉框
+                $.get('/api/cabinets', function(cabinets) {
+                    const cabinetSelect = $('#cabinet_id');
+                    cabinets.forEach(function(cabinet) {
+                        cabinetSelect.append(`<option value="${cabinet.cabinet_id}">${cabinet.location}</option>`);
+                    });
                 });
-                
-                // 绑定表单提交事件
-                $('#add-new-medicine-form').submit(function(e) {
-                    e.preventDefault();
-                    submitNewMedicineForm();
+
+                $('#add-medicine-form').submit(function(event) {
+                    event.preventDefault();
+                    const formData = {
+                        national_code: $('#national_code').val(),
+                        name: $('#name').val(),
+                        medicine_type: $('input[name="medicine_type"]:checked').val(), // 获取选中的药品类型
+                        manufacture_name: $('#manufacture_name').val(),
+                        manufacture_date: $('#manufacture_date').val(),
+                        expiry_date: $('#expiry_date').val(),
+                        remaining_quantity: parseInt($('#remaining_quantity').val()),
+                        price: parseFloat($('#price').val()),
+                        cabinet_id: parseInt($('#cabinet_id').val())
+                    };
+
+                    $.ajax({
+                        url: '/api/add_medicine',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(formData),
+                        success: function(response) {
+                            $('#message-area').html(`<div class="success-message">${response.message}</div>`);
+                            $('#add-medicine-form')[0].reset(); // 清空表单
+                        },
+                        error: function(xhr) {
+                            const error = xhr.responseJSON ? xhr.responseJSON.error : '添加失败，请重试';
+                            $('#message-area').html(`<div class="error-message">${error}</div>`);
+                        }
+                    });
                 });
             });
 
@@ -675,22 +692,23 @@
 
         function viewMedicineDetails(nationalCode) {
             $.get(`/api/medicine_details/${nationalCode}`, function(data) {
-                let content = '<div class="content-card">';
-                content += `<h2>${data.name}的详细信息</h2>`;
-                content += '<div class="details-container">';
-                content += `
-                    <div class="detail-item"><div class="detail-label">药品编码</div><div class="detail-value">${data.national_code}</div></div>
-                    <div class="detail-item"><div class="detail-label">生产厂家</div><div class="detail-value">${data.manufacture_name}</div></div>
-                    <div class="detail-item"><div class="detail-label">生产日期</div><div class="detail-value">${data.manufacture_date}</div></div>
-                    <div class="detail-item"><div class="detail-label">剩余数量</div><div class="detail-value">${data.remaining_quantity}</div></div>
-                    <div class="detail-item"><div class="detail-label">过期日期</div><div class="detail-value">${data.expiry_date}</div></div>
-                    <div class="detail-item"><div class="detail-label">价格</div><div class="detail-value">¥${data.price}</div></div>
-                    <div class="detail-item"><div class="detail-label">存放位置</div><div class="detail-value">${data.cabinet_location}</div></div>
-                `;
-                content += '</div>';
-                content += '<div style="margin-top: 20px;"><button onclick="returnToMedicines()">返回</button></div>';
-                content += '</div>';
+                let content = `
+            <div class="content-card">
+                <h2>药品详情: ${data.name}</h2>
+                <p><strong>药品编码:</strong> ${data.national_code}</p>
+                <p><strong>药品类型:</strong> ${data.medicine_type}</p> <!-- 显示药品类型 -->
+                <p><strong>生产厂家:</strong> ${data.manufacture_name || '未提供'}</p>
+                <p><strong>生产日期:</strong> ${data.manufacture_date}</p>
+                <p><strong>过期日期:</strong> ${data.expiry_date}</p>
+                <p><strong>剩余数量:</strong> ${data.remaining_quantity}</p>
+                <p><strong>价格:</strong> ${data.price !== null ? data.price.toFixed(2) : '未提供'}</p>
+                <p><strong>存放药箱:</strong> ${data.cabinet_location}</p>
+                <button onclick="$('#query-medicines').click()" class="btn btn-secondary">返回药品列表</button>
+            </div>
+        `;
                 $('#content-area').html(content);
+            }).fail(function() {
+                $('#content-area').html('<p class="error-message">无法加载药品详情。</p>');
             });
         }
 
