@@ -107,6 +107,22 @@ def get_prescriptions():
     
     return jsonify(prescriptions_data)
 
+# 获取生产厂家列表
+@main.route('/api/manufactures', methods=['GET'])
+def get_manufactures():
+    manufactures = Manufacture.query.all()
+    manufactures_data = [{'manufacture_name': m.manufacture_name, 'address': m.address} for m in manufactures]
+    return jsonify(manufactures_data)
+
+# 检查生产厂家是否存在
+@main.route('/api/check_manufacture/<string:manufacture_name>', methods=['GET'])
+def check_manufacture(manufacture_name):
+    manufacture = Manufacture.query.get(manufacture_name)
+    return jsonify({
+        'exists': manufacture is not None,
+        'address': manufacture.address if manufacture else None
+    })
+
 # 新增：获取处方详情（包括开给谁和包含哪些药品）
 @main.route('/api/prescription_details/<string:prescription_id>', methods=['GET'])
 def get_prescription_details(prescription_id):
@@ -289,7 +305,34 @@ def api_add_medicine():
         if not medicine_type or medicine_type not in ['OTC', 'Prescription']:
             return jsonify({'error': '无效的药品类型！必须是 OTC 或 Prescription'}), 400
         
-        # 检查药品编码是否已存在
+        # 检查生产厂家是否存在，如果不存在则需要提供地址
+        manufacture_name = data.get('manufacture_name', '').strip()
+        if manufacture_name:
+            existing_manufacture = Manufacture.query.get(manufacture_name)
+            if not existing_manufacture:
+                # 生产厂家不存在，检查是否提供了地址
+                manufacture_address = data.get('manufacture_address', '').strip()
+                if not manufacture_address:
+                    return jsonify({'error': f'生产厂家 "{manufacture_name}" 不存在于系统中，请填写厂家地址！'}), 400
+                
+                # 创建新的生产厂家记录
+                new_manufacture = Manufacture(
+                    manufacture_name=manufacture_name,
+                    address=manufacture_address
+                )
+                db.session.add(new_manufacture)
+        
+        # 如果是处方药，检查处方ID是否必填
+        if medicine_type == 'Prescription':
+            prescription_id = data.get('prescription_id', '').strip()
+            if not prescription_id:
+                return jsonify({'error': '添加处方药时必须填写处方ID！'}), 400
+            
+            # 验证处方ID是否存在
+            existing_prescription = Prescription.query.get(prescription_id)
+            if not existing_prescription:
+                return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID。'}), 400
+          # 检查药品编码是否已存在
         existing_medicine = Medicine.query.get(data['national_code'])
         if existing_medicine:
             # 如果药品已存在，检查其他信息是否相同
@@ -299,7 +342,23 @@ def api_add_medicine():
                 
                 # 更新药品信息
                 if data.get('manufacture_name'):
-                    existing_medicine.manufacture_name = data.get('manufacture_name')
+                    # 检查新的生产厂家是否存在
+                    new_manufacture_name = data.get('manufacture_name').strip()
+                    if new_manufacture_name != existing_medicine.manufacture_name:
+                        existing_new_manufacture = Manufacture.query.get(new_manufacture_name)
+                        if not existing_new_manufacture:
+                            manufacture_address = data.get('manufacture_address', '').strip()
+                            if not manufacture_address:
+                                return jsonify({'error': f'生产厂家 "{new_manufacture_name}" 不存在于系统中，请填写厂家地址！'}), 400
+                            
+                            # 创建新的生产厂家记录
+                            new_manufacture = Manufacture(
+                                manufacture_name=new_manufacture_name,
+                                address=manufacture_address
+                            )
+                            db.session.add(new_manufacture)
+                    
+                    existing_medicine.manufacture_name = new_manufacture_name
                     
                 # 只有在提供了新日期的情况下才更新日期
                 if data.get('manufacture_date'):
@@ -323,8 +382,7 @@ def api_add_medicine():
                     existing_medicine.cabinet_id = int(data.get('cabinet_id'))                
                 # 更新数量
                 existing_medicine.remaining_quantity = new_quantity
-                
-                # 确保药品类型记录存在
+                  # 确保药品类型记录存在
                 if medicine_type == 'OTC':
                     from app.models import OTC
                     otc_record = OTC.query.filter_by(national_code=data['national_code']).first()
@@ -342,15 +400,16 @@ def api_add_medicine():
                                 medicine_manufacture_date = datetime.datetime.strptime(data['manufacture_date'], '%Y-%m-%d').date()
                             except ValueError:
                                 pass
-                          # 处理处方ID，如果为空则设为None
+                        
+                        # 处方ID，处方药必须填写处方ID
                         prescription_id = data.get('prescription_id', '').strip()
                         if not prescription_id:
-                            prescription_id = None
-                        else:
-                            # 验证处方ID是否存在
-                            existing_prescription = Prescription.query.get(prescription_id)
-                            if not existing_prescription:
-                                return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID或留空。'}), 400
+                            return jsonify({'error': '添加处方药时必须填写处方ID！'}), 400
+                        
+                        # 验证处方ID是否存在
+                        existing_prescription = Prescription.query.get(prescription_id)
+                        if not existing_prescription:
+                            return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID。'}), 400
                         
                         prescription_record = PrescriptionMedicine(
                             national_code=data['national_code'],
@@ -395,8 +454,7 @@ def api_add_medicine():
             cabinet_id=data.get('cabinet_id')
         )
         db.session.add(new_medicine)
-        
-        # 根据药品类型创建相应的记录
+          # 根据药品类型创建相应的记录
         if medicine_type == 'OTC':
             from app.models import OTC
             otc_record = OTC(
@@ -407,15 +465,15 @@ def api_add_medicine():
             db.session.add(otc_record)
         elif medicine_type == 'Prescription':
             from app.models import PrescriptionMedicine
-            # 处理处方ID，如果为空则设为None
+            # 处方药必须填写处方ID
             prescription_id = data.get('prescription_id', '').strip()
             if not prescription_id:
-                prescription_id = None
-            else:
-                # 验证处方ID是否存在
-                existing_prescription = Prescription.query.get(prescription_id)
-                if not existing_prescription:
-                    return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID或留空。'}), 400
+                return jsonify({'error': '添加处方药时必须填写处方ID！'}), 400
+            
+            # 验证处方ID是否存在
+            existing_prescription = Prescription.query.get(prescription_id)
+            if not existing_prescription:
+                return jsonify({'error': f'处方ID "{prescription_id}" 不存在！请输入有效的处方ID。'}), 400
             
             prescription_record = PrescriptionMedicine(
                 national_code=data['national_code'],
@@ -899,20 +957,9 @@ def get_low_stock_medicines():
                 'cabinet_location': cabinet.location if cabinet else '未知'
             })
         
-        # 按照剩余数量排序，最少的排在前面
-        result.sort(key=lambda x: x['remaining_quantity'])
+        # 按照剩余数量排序，最少的排在前面        result.sort(key=lambda x: x['remaining_quantity'])
         
         return jsonify(result)
         
     except Exception as e:
         return jsonify({'error': f'获取库存不足药品失败：{str(e)}'}), 500
-
-# 获取所有生产商信息
-@main.route('/api/manufactures', methods=['GET'])
-def get_manufactures():
-    try:
-        manufactures = Manufacture.query.all()
-        manufactures_data = [{'manufacture_name': m.manufacture_name, 'address': m.address} for m in manufactures]
-        return jsonify(manufactures_data)
-    except Exception as e:
-        return jsonify({'error': f'获取生产商信息失败：{str(e)}'}), 500

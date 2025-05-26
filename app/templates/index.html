@@ -85,35 +85,13 @@
         }
         .content-table th {
             background-color: #f5f5f5;
-        }
-        .form-container {
+        }        .form-container {
             max-width: 600px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f9f9f9;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #333;
-        }
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-        .form-group textarea {
-            height: 80px;
-            resize: vertical;
         }
         .btn {
             padding: 10px 20px;
@@ -538,17 +516,39 @@
                             <div class="form-group">
                                 <label for="name">药品名称:</label>
                                 <input type="text" id="name" name="name" required>
-                            </div>
-                            <div class="form-group">
+                            </div>                            <div class="form-group">
                                 <label>药品类型:</label>
-                                <input type="radio" id="otc" name="medicine_type" value="OTC" required>
-                                <label for="otc">OTC</label>
-                                <input type="radio" id="prescription" name="medicine_type" value="Prescription" required>
-                                <label for="prescription">处方药</label>
+                                <div class="radio-group">
+                                    <div class="radio-option">
+                                        <input type="radio" id="otc" name="medicine_type" value="OTC" required>
+                                        <label for="otc">OTC</label>
+                                    </div>
+                                    <div class="radio-option">
+                                        <input type="radio" id="prescription" name="medicine_type" value="Prescription" required>
+                                        <label for="prescription">处方药</label>
+                                    </div>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label for="manufacture_name">生产厂家:</label>
-                                <input type="text" id="manufacture_name" name="manufacture_name">
+                                <input type="text" id="manufacture_name" name="manufacture_name" list="manufacture-list">
+                                <datalist id="manufacture-list"></datalist>
+                                <small class="helper-text">选择已有厂家或输入新厂家名称</small>
+                            </div>
+                            <div class="form-group" id="manufacture-address-group" style="display: none;">
+                                <label for="manufacture_address">厂家地址:</label>
+                                <input type="text" id="manufacture_address" name="manufacture_address">
+                                <small class="helper-text">新厂家需要填写地址</small>
+                            </div>
+                            <div class="form-group" id="prescription-id-group" style="display: none;">
+                                <label for="prescription_id">处方ID:</label>
+                                <input type="text" id="prescription_id" name="prescription_id" list="prescription-list">
+                                <datalist id="prescription-list"></datalist>
+                                <small class="helper-text">处方药必须填写处方ID</small>
+                            </div>                            <div class="form-group" id="otc-direction-group" style="display: none;">
+                                <label for="direction">用法用量:</label>
+                                <textarea id="direction" name="direction" rows="3"></textarea>
+                                <small class="helper-text">OTC药品的用法说明</small>
                             </div>
                             <div class="form-group">
                                 <label for="manufacture_date">生产日期:</label>
@@ -565,15 +565,15 @@
                             <div class="form-group">
                                 <label for="price">价格:</label>
                                 <input type="number" id="price" name="price" step="0.01" min="0">
-                            </div>
-                            <div class="form-group">
+                            </div>                            <div class="form-group">
                                 <label for="cabinet_id">存放药箱:</label>
                                 <select id="cabinet_id" name="cabinet_id"></select>
                             </div>
-                            <button type="submit" class="btn btn-primary">添加药品</button>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">添加药品</button>
+                            </div>
                         </form>
-                    </div>
-                `;
+                    </div>`;
                 $('#content-area').html(content);
 
                 // 获取药箱列表并填充下拉框
@@ -584,7 +584,59 @@
                     });
                 });
 
-                $('#add-medicine-form').submit(function(event) {
+                // 获取生产厂家列表并填充datalist
+                $.get('/api/manufactures', function(manufactures) {
+                    const manufactureList = $('#manufacture-list');
+                    manufactures.forEach(function(manufacture) {
+                        manufactureList.append(`<option value="${manufacture.manufacture_name}">${manufacture.manufacture_name} - ${manufacture.address}</option>`);
+                    });
+                });
+
+                // 获取处方列表并填充datalist
+                $.get('/api/prescriptions', function(prescriptions) {
+                    const prescriptionList = $('#prescription-list');
+                    prescriptions.forEach(function(prescription) {
+                        prescriptionList.append(`<option value="${prescription.prescription_id}">处方${prescription.prescription_id} - ${prescription.doctor}</option>`);
+                    });
+                });
+
+                // 监听药品类型变化
+                $('input[name="medicine_type"]').change(function() {
+                    const medicineType = $(this).val();
+                    if (medicineType === 'OTC') {
+                        $('#prescription-id-group').hide();
+                        $('#prescription_id').removeAttr('required');
+                        $('#otc-direction-group').show();
+                    } else if (medicineType === 'Prescription') {
+                        $('#otc-direction-group').hide();
+                        $('#prescription-id-group').show();
+                        $('#prescription_id').attr('required', 'required');
+                    }
+                });
+
+                // 监听生产厂家输入变化
+                $('#manufacture_name').on('input', function() {
+                    const manufactureName = $(this).val().trim();
+                    if (manufactureName) {
+                        // 检查厂家是否存在
+                        $.get(`/api/check_manufacture/${encodeURIComponent(manufactureName)}`, function(result) {
+                            if (result.exists) {
+                                $('#manufacture-address-group').hide();
+                                $('#manufacture_address').removeAttr('required');
+                            } else {
+                                $('#manufacture-address-group').show();
+                                $('#manufacture_address').attr('required', 'required');
+                            }
+                        }).fail(function() {
+                            // 如果请求失败，显示地址输入框
+                            $('#manufacture-address-group').show();
+                            $('#manufacture_address').attr('required', 'required');
+                        });
+                    } else {
+                        $('#manufacture-address-group').hide();
+                        $('#manufacture_address').removeAttr('required');
+                    }
+                });                $('#add-medicine-form').submit(function(event) {
                     event.preventDefault();
                     const formData = {
                         national_code: $('#national_code').val(),
@@ -597,6 +649,24 @@
                         price: parseFloat($('#price').val()),
                         cabinet_id: parseInt($('#cabinet_id').val())
                     };
+
+                    // 添加生产厂家地址（如果需要）
+                    const manufactureAddress = $('#manufacture_address').val();
+                    if (manufactureAddress) {
+                        formData.manufacture_address = manufactureAddress;
+                    }
+
+                    // 添加处方ID（如果是处方药）
+                    const prescriptionId = $('#prescription_id').val();
+                    if (prescriptionId) {
+                        formData.prescription_id = prescriptionId;
+                    }
+
+                    // 添加OTC用法说明（如果是OTC）
+                    const direction = $('#direction').val();
+                    if (direction) {
+                        formData.direction = direction;
+                    }
 
                     $.ajax({
                         url: '/api/add_medicine',
