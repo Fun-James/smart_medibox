@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
-from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture
+from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture, OTC
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
@@ -18,8 +18,26 @@ def index():
 @main.route('/api/medicines', methods=['GET'])
 def get_medicines():
     medicines = Medicine.query.all()
-    medicines_data = [{'national_code': m.national_code, 'name': m.name, 'remaining_quantity': m.remaining_quantity} for m in medicines]
-    return jsonify(medicines_data)
+    result = []
+    from .models import PrescriptionMedicine, OTC
+    for m in medicines:
+        # 优先判断处方药
+        is_prescription = PrescriptionMedicine.query.filter_by(national_code=m.national_code).first()
+        if is_prescription:
+            med_type = '处方药'
+        else:
+            is_otc = OTC.query.filter_by(national_code=m.national_code).first()
+            if is_otc:
+                med_type = '非处方药'
+            else:
+                med_type = '未知'
+        result.append({
+            'national_code': m.national_code,
+            'name': m.name,
+            'remaining_quantity': m.remaining_quantity,
+            'type': med_type
+        })
+    return jsonify(result)
 
 # 获取成员列表
 @main.route('/api/members', methods=['GET'])
@@ -75,9 +93,17 @@ def get_medicine_details(national_code):
     medicine = Medicine.query.get(national_code)
     if not medicine:
         return jsonify({'error': 'Medicine not found'}), 404
-    
     cabinet = MedicineCabinet.query.get(medicine.cabinet_id) if medicine.cabinet_id else None
-    
+    from .models import PrescriptionMedicine, OTC
+    is_prescription = PrescriptionMedicine.query.filter_by(national_code=medicine.national_code).first()
+    if is_prescription:
+        med_type = '处方药'
+    else:
+        is_otc = OTC.query.filter_by(national_code=medicine.national_code).first()
+        if is_otc:
+            med_type = '非处方药'
+        else:
+            med_type = '未知'
     medicine_data = {
         'national_code': medicine.national_code,
         'name': medicine.name,
@@ -87,7 +113,8 @@ def get_medicine_details(national_code):
         'expiry_date': medicine.expiry_date.strftime('%Y-%m-%d') if medicine.expiry_date else '未知',
         'price': medicine.price,
         'cabinet_id': medicine.cabinet_id,
-        'cabinet_location': cabinet.location if cabinet else '未知'
+        'cabinet_location': cabinet.location if cabinet else '未知',
+        'type': med_type
     }
     return jsonify(medicine_data)
 
@@ -359,6 +386,16 @@ def api_add_medicine():
         )
         
         db.session.add(new_medicine)
+        # 新增：根据type写入OTC或PrescriptionMedicine
+        med_type = data.get('medicine_type')
+        if med_type == 'otc':
+            from .models import OTC
+            otc = OTC(national_code=data['national_code'], direction='')
+            db.session.add(otc)
+        elif med_type == 'prescription':
+            from .models import PrescriptionMedicine
+            pm = PrescriptionMedicine(national_code=data['national_code'], prescription_id=None)
+            db.session.add(pm)
         db.session.commit()
         return jsonify({'message': '药品添加成功！'})
         
@@ -741,6 +778,42 @@ def get_low_stock_medicines():
         
     except Exception as e:
         return jsonify({'error': f'获取库存不足药品失败：{str(e)}'}), 500
+
+# 获取已过期的药品
+@main.route('/api/expired_medicines', methods=['GET'])
+def get_expired_medicines():
+    try:
+        current_date = datetime.datetime.now().date()
+        
+        # 查询所有有过期日期且已经过期的药品
+        expired_medicines = Medicine.query.filter(
+            Medicine.expiry_date.isnot(None),
+            Medicine.expiry_date < current_date,
+            Medicine.remaining_quantity > 0  # 只显示还有剩余的药品
+        ).all()
+        
+        result = []
+        for medicine in expired_medicines:
+            days_expired = (current_date - medicine.expiry_date).days
+            
+            cabinet = MedicineCabinet.query.get(medicine.cabinet_id) if medicine.cabinet_id else None
+            
+            result.append({
+                'national_code': medicine.national_code,
+                'name': medicine.name,
+                'expiry_date': medicine.expiry_date.strftime('%Y-%m-%d'),
+                'days_expired': days_expired,
+                'remaining_quantity': medicine.remaining_quantity,
+                'cabinet_location': cabinet.location if cabinet else '未知'
+            })
+        
+        # 按照过期时间排序，过期时间最长的排在前面
+        result.sort(key=lambda x: x['days_expired'], reverse=True)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': f'获取已过期药品失败：{str(e)}'}), 500
 
 # 获取所有生产商信息
 @main.route('/api/manufactures', methods=['GET'])
