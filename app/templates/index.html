@@ -174,17 +174,14 @@
             margin-bottom: 15px;
             border: 1px solid #ffeaa7;
         }
-        
-        /* 药品提醒样式 */
+          /* 药品提醒样式 */
         .alerts-container {
             display: flex;
-            flex-wrap: wrap;
             gap: 20px;
         }
         
         .alert-section {
             flex: 1;
-            min-width: 300px;
             background-color: #f8f9fa;
             border-radius: 8px;
             padding: 15px;
@@ -227,6 +224,11 @@
             background-color: #fffbf4;
         }
         
+        .alert-item.danger-alert {
+            border-left-color: #dc3545;
+            background-color: #f8f4f4;
+        }
+        
         .alert-header {
             display: flex;
             justify-content: space-between;
@@ -240,7 +242,7 @@
             color: #333;
         }
         
-        .expiry-days, .stock-count {
+        .expiry-days, .stock-count, .expired-days {
             font-weight: bold;
             font-size: 14px;
             padding: 3px 8px;
@@ -249,14 +251,19 @@
             color: #4285f4;
         }
         
-        .urgent-alert .expiry-days, .urgent-alert .stock-count {
+        .urgent-alert .expiry-days, .urgent-alert .stock-count, .urgent-alert .expired-days {
             background-color: #ffe7e7;
             color: #f44336;
         }
         
-        .warning-alert .expiry-days, .warning-alert .stock-count {
+        .warning-alert .expiry-days, .warning-alert .stock-count, .warning-alert .expired-days {
             background-color: #fff3e0;
             color: #ff9800;
+        }
+        
+        .danger-alert .expired-days {
+            background-color: #ffe1e1;
+            color: #dc3545;
         }
         
         .alert-details {
@@ -1200,8 +1207,7 @@
                 }
             });
         }
-        
-        // 添加药品提醒功能
+          // 添加药品提醒功能
         $('#medicine-alerts').click(function() {
             $('#content-area').html('<div class="content-card"><h2>药品提醒</h2><p>加载中，请稍候...</p></div>');
             
@@ -1209,13 +1215,19 @@
             let content = '<div class="content-card"><h2>药品提醒</h2>';
             content += '<div class="alerts-container">';
             
-            // 左侧部分 - 过期提醒
+            // 第一栏 - 即将过期提醒
             content += '<div class="alert-section expiry-alerts">';
             content += '<h3>即将过期药品（30天内）</h3>';
             content += '<div id="expiring-medicines" class="alerts-content">加载中...</div>';
             content += '</div>';
             
-            // 右侧部分 - 库存提醒
+            // 第二栏 - 已过期提醒
+            content += '<div class="alert-section expired-alerts">';
+            content += '<h3>已过期药品</h3>';
+            content += '<div id="expired-medicines" class="alerts-content">加载中...</div>';
+            content += '</div>';
+            
+            // 第三栏 - 库存提醒
             content += '<div class="alert-section stock-alerts">';
             content += '<h3>库存不足药品（少于3个）</h3>';
             content += '<div id="low-stock-medicines" class="alerts-content">加载中...</div>';
@@ -1305,6 +1317,51 @@
             }).fail(function() {
                 $('#low-stock-medicines').html('<div class="error-message">获取库存药品信息失败</div>');
             });
+            
+            // 加载已过期的药品
+            $.get('/api/expired_medicines', function(data) {
+                let expiredContent = '';
+                
+                if (data.length === 0) {
+                    expiredContent = '<div class="empty-alert"><p>没有已过期的药品</p></div>';
+                } else {
+                    expiredContent = '<div class="alert-items">';
+                    data.forEach(function(medicine) {
+                        let urgencyClass = '';
+                        if (medicine.days_expired <= 30) {
+                            urgencyClass = 'urgent-alert'; // 30天内过期
+                        } else if (medicine.days_expired <= 90) {
+                            urgencyClass = 'warning-alert'; // 90天内过期
+                        } else {
+                            urgencyClass = 'danger-alert'; // 90天以上过期
+                        }
+                        
+                        expiredContent += `
+                            <div class="alert-item ${urgencyClass}">
+                                <div class="alert-header">
+                                    <h4>${medicine.name}</h4>
+                                    <span class="expired-days">已过期 ${medicine.days_expired}天</span>
+                                </div>
+                                <div class="alert-details">
+                                    <p><strong>编码:</strong> ${medicine.national_code}</p>
+                                    <p><strong>过期日期:</strong> ${medicine.expiry_date}</p>
+                                    <p><strong>剩余数量:</strong> ${medicine.remaining_quantity}</p>
+                                    <p><strong>存放位置:</strong> ${medicine.cabinet_location}</p>
+                                </div>
+                                <div class="alert-actions">
+                                    <button onclick="viewMedicineDetails('${medicine.national_code}')" class="btn btn-primary">查看详情</button>
+                                    <button onclick="showRemoveExpiredDialog('${medicine.national_code}', '${medicine.name}')" class="btn btn-danger">删除过期药品</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    expiredContent += '</div>';
+                }
+                
+                $('#expired-medicines').html(expiredContent);
+            }).fail(function() {
+                $('#expired-medicines').html('<div class="error-message">获取已过期药品信息失败</div>');
+            });
         });
         
         // 显示补充药品对话框
@@ -1359,6 +1416,43 @@
         // 重新加载药品提醒页面
         function loadMedicineAlerts() {
             $('#medicine-alerts').click();
+        }
+        
+        // 显示删除过期药品对话框
+        function showRemoveExpiredDialog(nationalCode, medicineName) {
+            if (confirm(`确定要删除过期药品"${medicineName}"吗？\n注意：这将完全删除该药品的所有库存！\n此操作不可恢复！`)) {
+                removeExpiredMedicine(nationalCode, medicineName);
+            }
+        }
+        
+        // 删除过期药品
+        function removeExpiredMedicine(nationalCode, medicineName) {
+            // 获取药品详情以确定删除数量
+            $.get(`/api/medicine_details/${nationalCode}`, function(medicine) {
+                $.ajax({
+                    url: '/api/remove_medicine',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        national_code: nationalCode,
+                        quantity_to_remove: medicine.remaining_quantity // 删除全部库存
+                    }),
+                    success: function(response) {
+                        showMessage(`已删除过期药品"${medicineName}"！`, 'success');
+                        // 重新加载药品提醒页面
+                        $('#medicine-alerts').click();
+                    },
+                    error: function(xhr, status, error) {
+                        let errorMsg = '删除过期药品失败！';
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        }
+                        showMessage(errorMsg, 'error');
+                    }
+                });
+            }).fail(function() {
+                showMessage('获取药品信息失败，无法删除！', 'error');
+            });
         }
     </script>
 </body>

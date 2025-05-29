@@ -957,9 +957,46 @@ def get_low_stock_medicines():
                 'cabinet_location': cabinet.location if cabinet else '未知'
             })
         
-        # 按照剩余数量排序，最少的排在前面        result.sort(key=lambda x: x['remaining_quantity'])
+        # 按照剩余数量排序，最少的排在前面        
+        result.sort(key=lambda x: x['remaining_quantity'])
         
         return jsonify(result)
         
     except Exception as e:
         return jsonify({'error': f'获取库存不足药品失败：{str(e)}'}), 500
+
+# 获取已过期的药品
+@main.route('/api/expired_medicines', methods=['GET'])
+def get_expired_medicines():
+    try:
+        current_date = datetime.datetime.now().date()
+        
+        # 查询所有有过期日期且已经过期的药品
+        expired_medicines = Medicine.query.filter(
+            Medicine.expiry_date.isnot(None),
+            Medicine.expiry_date < current_date,
+            Medicine.remaining_quantity > 0  # 只显示还有剩余的药品
+        ).all()
+        
+        result = []
+        for medicine in expired_medicines:
+            days_expired = (current_date - medicine.expiry_date).days
+            
+            cabinet = MedicineCabinet.query.get(medicine.cabinet_id) if medicine.cabinet_id else None
+            
+            result.append({
+                'national_code': medicine.national_code,
+                'name': medicine.name,
+                'expiry_date': medicine.expiry_date.strftime('%Y-%m-%d'),
+                'days_expired': days_expired,
+                'remaining_quantity': medicine.remaining_quantity,
+                'cabinet_location': cabinet.location if cabinet else '未知'
+            })
+        
+        # 按照过期时间排序，最近过期的排在前面
+        result.sort(key=lambda x: x['days_expired'])
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': f'获取已过期药品失败：{str(e)}'}), 500
