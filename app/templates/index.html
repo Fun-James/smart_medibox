@@ -346,7 +346,10 @@
                                 <td>${member.security_id}</td>
                                 <td>${member.gender}</td>
                                 <td>${member.age}</td>
-                                <td><button onclick="viewMemberDetails('${member.security_id}')">查看详情</button></td>
+                                <td>
+                                    <button onclick="viewMemberDetails('${member.security_id}')" class="btn btn-primary">查看详情</button>
+                                    <button onclick="editMemberInfo('${member.security_id}')" class="btn btn-secondary">编辑信息</button>
+                                </td>
                             </tr>`;
                         });
                         content += '</table>';
@@ -1453,6 +1456,144 @@
             }).fail(function() {
                 showMessage('获取药品信息失败，无法删除！', 'error');
             });
+        }
+        
+        // 编辑成员信息
+        function editMemberInfo(securityId) {
+            // 首先获取成员的详细信息
+            $.get(`/api/member_details_for_edit/${securityId}`, function(data) {
+                let content = `
+                    <div class="form-container">
+                        <h2>编辑成员信息</h2>
+                        <div id="edit-member-message-area"></div>
+                        
+                        ${data.total_related_records > 0 ? 
+                            `<div class="warning-message">
+                                <strong>注意：</strong>该成员有 ${data.total_related_records} 条相关记录（用药记录: ${data.has_medicine_records ? '有' : '无'}，处方记录: ${data.has_prescription_records ? '有' : '无'}）。
+                                修改身份证号将同时更新所有相关记录。
+                            </div>` : ''
+                        }
+                        
+                        <form id="edit-member-form">
+                            <div class="form-group">
+                                <label for="old_security_id">当前身份证号:</label>
+                                <input type="text" id="old_security_id" name="old_security_id" value="${data.security_id}" readonly style="background-color: #f5f5f5;">
+                            </div>
+                            <div class="form-group">
+                                <label for="new_security_id">新身份证号:</label>
+                                <input type="text" id="new_security_id" name="new_security_id" value="${data.security_id}" required>
+                                <small class="helper-text">可以修改为新的身份证号，或保持不变</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_name">姓名:</label>
+                                <input type="text" id="edit_name" name="name" value="${data.name}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_gender">性别:</label>
+                                <select id="edit_gender" name="gender" required>
+                                    <option value="M" ${data.gender === 'M' ? 'selected' : ''}>男</option>
+                                    <option value="F" ${data.gender === 'F' ? 'selected' : ''}>女</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_age">年龄:</label>
+                                <input type="number" id="edit_age" name="age" value="${data.age}" min="1" max="150" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_weight">体重 (kg):</label>
+                                <input type="number" id="edit_weight" name="weight" value="${data.weight}" step="0.1" min="1" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_height">身高 (cm):</label>
+                                <input type="number" id="edit_height" name="height" value="${data.height}" step="0.1" min="1" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_underlying_disease">基础疾病:</label>
+                                <textarea id="edit_underlying_disease" name="underlying_disease" rows="3">${data.underlying_disease}</textarea>
+                                <small class="helper-text">如有多种疾病，请用逗号分隔</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit_allergen">过敏原:</label>
+                                <textarea id="edit_allergen" name="allergen" rows="3">${data.allergen}</textarea>
+                                <small class="helper-text">如有多种过敏原，请用逗号分隔</small>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">保存修改</button>
+                                <button type="button" class="btn btn-secondary" onclick="$('#query-members').click()">取消</button>
+                            </div>
+                        </form>
+                    </div>`;
+                
+                $('#content-area').html(content);
+                
+                // 绑定表单提交事件
+                $('#edit-member-form').submit(function(event) {
+                    event.preventDefault();
+                    updateMemberInfo();
+                });
+                
+            }).fail(function(xhr) {
+                let errorMsg = '获取成员信息失败！';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                }
+                alert(errorMsg);
+            });
+        }
+        
+        // 更新成员信息
+        function updateMemberInfo() {
+            const formData = {
+                old_security_id: $('#old_security_id').val(),
+                new_security_id: $('#new_security_id').val().trim(),
+                name: $('#edit_name').val().trim(),
+                gender: $('#edit_gender').val(),
+                age: parseInt($('#edit_age').val()),
+                weight: parseFloat($('#edit_weight').val()),
+                height: parseFloat($('#edit_height').val()),
+                underlying_disease: $('#edit_underlying_disease').val().trim(),
+                allergen: $('#edit_allergen').val().trim()
+            };
+              // 验证必填字段
+            if (!formData.new_security_id || !formData.name || !formData.gender || 
+                !formData.age || !formData.weight || !formData.height) {
+                showEditMemberMessage('请填写所有必填字段！', 'error');
+                return;
+            }
+            
+            $.ajax({
+                url: '/api/update_member',
+                method: 'PUT',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    showEditMemberMessage(response.message, 'success');
+                    // 延迟返回列表，让用户看到成功消息
+                    setTimeout(function() {
+                        $('#query-members').click();
+                    }, 2000);
+                },
+                error: function(xhr, status, error) {
+                    let errorMsg = '更新成员信息失败！';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    showEditMemberMessage(errorMsg, 'error');
+                }
+            });
+        }
+        
+        // 显示编辑成员信息的消息
+        function showEditMemberMessage(message, type) {
+            $('#edit-member-message-area').html('');
+            const messageClass = type === 'success' ? 'success-message' : 'error-message';
+            const messageHtml = `<div class="${messageClass}">${message}</div>`;
+            $('#edit-member-message-area').html(messageHtml);
+            
+            // 滚动到消息区域
+            $('html, body').animate({
+                scrollTop: $('#edit-member-message-area').offset().top - 100
+            }, 300);
         }
     </script>
 </body>

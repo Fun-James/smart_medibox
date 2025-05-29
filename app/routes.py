@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
+from sqlalchemy import text # 导入 text 函数
 from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture, OTC
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -1000,3 +1001,94 @@ def get_expired_medicines():
         
     except Exception as e:
         return jsonify({'error': f'获取已过期药品失败：{str(e)}'}), 500
+
+# 修改成员信息（使用存储过程）
+@main.route('/api/update_member', methods=['PUT'])
+def api_update_member():
+    try:
+        data = request.json
+        old_security_id = data.get('old_security_id')
+        new_security_id = data.get('new_security_id')
+        
+        # 验证必填字段
+        if not old_security_id or not new_security_id:
+            return jsonify({'error': '原用户ID和新用户ID不能为空！'}), 400
+        
+        # 验证其他必填字段
+        required_fields = ['name', 'gender', 'age', 'weight', 'height']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'字段 {field} 不能为空！'}), 400
+        
+        # 调用存储过程
+        try:
+            result = db.session.execute(
+                text("""CALL UpdateMemberSecurityId(:old_security_id, :new_security_id, :name, :gender, 
+                   :age, :weight, :height, :underlying_disease, :allergen)"""), # 使用 text() 包装SQL字符串
+                {
+                    'old_security_id': old_security_id,
+                    'new_security_id': new_security_id,
+                    'name': data.get('name'),
+                    'gender': data.get('gender'),
+                    'age': data.get('age'),
+                    'weight': data.get('weight'),
+                    'height': data.get('height'),
+                    'underlying_disease': data.get('underlying_disease', ''),
+                    'allergen': data.get('allergen', '')
+                }
+            )
+            
+            # 获取存储过程的返回结果
+            result_data = result.fetchone()
+            if result_data and result_data[0] == 'success':
+                db.session.commit()
+                return jsonify({'message': result_data[1]})
+            else:
+                db.session.rollback()
+                return jsonify({'error': '更新失败'}), 500
+                
+        except Exception as e:
+            db.session.rollback()
+            error_msg = str(e)
+            if 'SQLSTATE' in error_msg:
+                # 提取存储过程中的自定义错误信息
+                if '原用户ID不存在' in error_msg:
+                    return jsonify({'error': '原用户ID不存在'}), 404
+                elif '新用户ID已存在' in error_msg:
+                    return jsonify({'error': '新用户ID已存在'}), 400
+            
+            return jsonify({'error': f'更新成员信息时发生错误：{error_msg}'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': f'处理请求时发生错误：{str(e)}'}), 500
+
+# 获取成员详细信息（用于编辑页面）
+@main.route('/api/member_details_for_edit/<string:security_id>', methods=['GET'])
+def get_member_details_for_edit(security_id):
+    try:
+        member = Member.query.get(security_id)
+        if not member:
+            return jsonify({'error': '找不到指定的成员'}), 404
+        
+        # 检查该成员是否有关联的用药记录
+        medicine_count = MedicineAdministration.query.filter_by(security_id=security_id).count()
+        prescription_count = Prescription.query.filter_by(security_id=security_id).count()
+        
+        member_data = {
+            'security_id': member.security_id,
+            'name': member.name,
+            'gender': member.gender,
+            'age': member.age,
+            'weight': member.weight,
+            'height': member.height,
+            'underlying_disease': member.underlying_disease or '',
+            'allergen': member.allergen or '',
+            'has_medicine_records': medicine_count > 0,
+            'has_prescription_records': prescription_count > 0,
+            'total_related_records': medicine_count + prescription_count
+        }
+        
+        return jsonify(member_data)
+        
+    except Exception as e:
+        return jsonify({'error': f'获取成员信息时发生错误：{str(e)}'}), 500
