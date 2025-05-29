@@ -85,3 +85,11 @@ class PrescriptionMedicine(db.Model):
     national_code = db.Column(db.String(256), db.ForeignKey('medicine.national_code'), primary_key=True)
     prescription_id = db.Column(db.String(256), db.ForeignKey('prescription.prescription_id'))
     manufacture_date = db.Column(db.Date)  # 添加manufacture_date字段
+
+class UserInfo(db.Model):
+    __tablename__ = 'userinfo'
+    username = db.Column(db.String(80), primary_key=True)
+    password = db.Column(db.String(120), nullable=False)
+
+    def __repr__(self):
+        return f'<UserInfo {self.username}>'

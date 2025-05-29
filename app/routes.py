@@ -1,6 +1,6 @@
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
 from sqlalchemy import text # 导入 text 函数
-from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture, OTC
+from .models import Medicine, Member, MedicineAdministration, MedicineCabinet, Prescription, PrescriptionMedicine, Manufacture, OTC, UserInfo
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
@@ -11,8 +11,30 @@ main = Blueprint('main', __name__)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
+@main.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = UserInfo.query.filter_by(username=username).first()
+        if user and user.password == password: # 在实际应用中，密码应该是哈希过的
+            session['username'] = user.username  # 使用 username 替换 id
+            flash('Login successful!', 'success')
+            return redirect(url_for('main.index'))
+        else:
+            flash('Invalid username or password', 'danger')
+    return render_template('login.html')
+
+@main.route('/logout')
+def logout():
+    session.pop('username', None)  # 使用 username 替换 user_id
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('main.login'))
+
 @main.route('/')
 def index():
+    if 'username' not in session:  # 使用 username 替换 user_id
+        return redirect(url_for('main.login'))
     return render_template('index.html')
 
 # 获取药品列表

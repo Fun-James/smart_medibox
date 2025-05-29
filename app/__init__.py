@@ -9,8 +9,9 @@ def create_app():
 
     db.init_app(app)
 
-    # 延迟导入蓝图
+    # 延迟导入蓝图和创建表
     with app.app_context():
+
         from .routes import main
         app.register_blueprint(main)
 
