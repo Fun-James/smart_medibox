@@ -1,7 +1,7 @@
 # Smart MediBox 家庭智能药箱管理系统
 
 ## 项目简介
-Smart MediBox 是一个基于 Flask + SQLAlchemy + MySQL 的家庭药品管理系统。系统支持药品、成员、药箱、处方等信息的管理，并提供了美观的登录界面和基础的权限控制（简单登录）。适合家庭或小型场景下的药品库存与用药记录管理。
+Smart MediBox 是一个基于 Flask + MySQL 的家庭药品管理系统。系统支持药品、成员、药箱、处方等信息的管理，并提供了美观的登录界面和基础的权限控制（简单登录）。适合家庭或小型场景下的药品库存与用药记录管理。
 
 ## 主要功能
 - 用户登录/登出
@@ -14,9 +14,8 @@ Smart MediBox 是一个基于 Flask + SQLAlchemy + MySQL 的家庭药品管理�
 ## 技术栈
 - Python 3
 - Flask
-- Flask-SQLAlchemy
 - MySQL（通过 PyMySQL 连接）
-- HTML/CSS（含美化的登录界面）
+- HTML/CSS
 
 ## 快速开始
 1. **安装依赖**
@@ -55,7 +54,4 @@ smart_medibox/
 
 ## 其他说明
 - 登录功能为演示用途，密码未加密，生产环境请务必加密存储。
-- 如需自定义功能或界面，可直接修改 `app/routes.py`、`app/templates/` 和 `app/static/` 下相关文件。
 
----
-如有问题欢迎反馈！
