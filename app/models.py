@@ -93,3 +93,13 @@ class UserInfo(db.Model):
 
     def __repr__(self):
         return f'<UserInfo {self.username}>'
+
+# 即将过期药品视图模型
+class ExpiringMedicinesView(db.Model):
+    __tablename__ = 'expiring_medicines_view'
+    national_code = db.Column(db.String(256), primary_key=True)
+    name = db.Column(db.String(256))
+    expiry_date = db.Column(db.Date)
+    days_until_expiry = db.Column(db.Integer)
+    remaining_quantity = db.Column(db.SmallInteger)
+    cabinet_location = db.Column(db.String(256))
